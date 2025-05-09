@@ -45,7 +45,7 @@ const int RearRight_motor  = 3;
 //Control period
 float Control_period = 0.0025f;//400Hz
 
-//PID Gain
+//PID Gain　　ロール（横回転）　　ピッチ（前後回転）　　ヨー（機体を上からみたときの回転方向の傾き）
 //Rate control PID gain　角速度制御
 const float Roll_rate_kp = 0.6f;
 const float Roll_rate_ti = 0.7f;
@@ -86,13 +86,13 @@ const float z_dot_ti = 13.5f;
 const float z_dot_td = 0.005f;
 const float z_dot_eta = 0.125f;
 
-//Times
+//Times　　時間経過を記録し、制御の正確性を確保するための変数群です。例えば Elapsed_time は、コードが動作してからの経過時間を管理するために使用されます。
 volatile float Elapsed_time=0.0f;
 volatile float Old_Elapsed_time=0.0f;
 volatile float Interval_time=0.0f;
 volatile uint32_t S_time=0,E_time=0,D_time=0,Dt_time=0;
 
-//Counter
+//Counter　ドローンの飛行制御での状態管理や処理回数を記録する
 uint8_t AngleControlCounter=0;
 uint16_t RateControlCounter=0;
 uint16_t OffsetCounter=0;
@@ -103,6 +103,7 @@ volatile float FrontLeft_motor_duty=0.0f;
 volatile float RearRight_motor_duty=0.0f;
 volatile float RearLeft_motor_duty=0.0f;
 
+//ユーザーの操作（ラジコンのスティック）に応じて変更される指令値。
 //制御目標
 //PID Control reference
 //角速度目標値
