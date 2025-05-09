@@ -21,32 +21,32 @@
 
 //モータPWM出力Pinのアサイン
 //Motor PWM Pin
-const int pwmFrontLeft  = 5;
-const int pwmFrontRight = 42;
-const int pwmRearLeft   = 10;
-const int pwmRearRight  = 41;
+const int pwmFrontLeft  = 5;//左前のモーター
+const int pwmFrontRight = 42;//右前
+const int pwmRearLeft   = 10;//左後ろ
+const int pwmRearRight  = 41;//右後ろ
 
 //モータPWM周波数 
 //Motor PWM Frequency
-const int freq = 150000;
+const int freq = 150000;// PWMの周波数は 150kHz
 
 //PWM分解能
 //PWM Resolution
-const int resolution = 8;
+const int resolution = 8;// PWMの分解能は 8ビット
 
-//モータチャンネルのアサイン
+//モータチャンネルのアサイン   4つのモーターにそれぞれ異なるチャンネルを割り当てている
 //Motor Channel
 const int FrontLeft_motor  = 0;
 const int FrontRight_motor = 1;
 const int RearLeft_motor   = 2;
 const int RearRight_motor  = 3;
 
-//制御周期
+//制御周期 、これにより制御周期（1回の処理にかかる時間） が 0.0025秒（2.5ミリ秒） となり、1秒間に400回の計算が実行 されることになる
 //Control period
 float Control_period = 0.0025f;//400Hz
 
 //PID Gain
-//Rate control PID gain
+//Rate control PID gain　角速度制御
 const float Roll_rate_kp = 0.6f;
 const float Roll_rate_ti = 0.7f;
 const float Roll_rate_td = 0.01;
@@ -62,7 +62,7 @@ const float Yaw_rate_ti = 0.8f;
 const float Yaw_rate_td = 0.01f;
 const float Yaw_rate_eta = 0.125f;
 
-//Angle control PID gain
+//Angle control PID gain　角度制御
 const float Rall_angle_kp = 8.0f;
 const float Rall_angle_ti = 4.0f;
 const float Rall_angle_td = 0.04f;
@@ -73,7 +73,7 @@ const float Pitch_angle_ti = 4.0f;
 const float Pitch_angle_td = 0.04f;
 const float Pitch_angle_eta = 0.125f;
 
-//Altitude control PID gain
+//Altitude control PID gain　高度制御
 const float alt_kp = 0.65f;
 const float alt_ti = 200.0f;
 const float alt_td = 0.0f;
