@@ -1,3 +1,16 @@
+/*このコードは、LED制御のロジックを実現するプログラムで、FastLEDライブラリを使用して複数のLEDを制御しています。飛行制御システムの一部として、LEDはシステムモードや状態に応じた点灯や点滅を行う役割を果たします。
+
+このコードは、ドローンやロボットシステムのLEDステータス表示を実現します。
+
+モード（例: AVERAGE_MODE, FLIGHT_MODE, PARKING_MODE）に応じてLEDの色や点滅状態を変更。
+
+エラーステータス（例: RCエラー、低電圧など）や制御状態（例: 角速度制御、高度制御）を視覚的にユーザーへフィードバック。
+
+
+https://lang-ship.com/blog/work/fastled/
+定番LED制御ライブラリで、特にNeoPixel的な複数のLEDがつながっているタイプのLED制御ではよく使われています。
+*/
+
 #include "led.hpp"
 #include "sensor.hpp"
 #include "rc.hpp"
