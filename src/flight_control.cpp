@@ -47,17 +47,17 @@ float Control_period = 0.0025f;//400Hz
 
 //PID Gain　　ロール（横回転）　　ピッチ（前後回転）　　ヨー（機体を上からみたときの回転方向の傾き）
 //Rate control PID gain　角速度制御
-const float Roll_rate_kp = 0.6f;
+const float Roll_rate_kp = 0.6f;//横回転の速さを制御
 const float Roll_rate_ti = 0.7f;
 const float Roll_rate_td = 0.01;
 const float Roll_rate_eta = 0.125f;
 
-const float Pitch_rate_kp = 0.75f;
+const float Pitch_rate_kp = 0.75f;//前後回転の速さ
 const float Pitch_rate_ti = 0.7f;
 const float Pitch_rate_td = 0.025f;
 const float Pitch_rate_eta = 0.125f;
 
-const float Yaw_rate_kp = 3.0f;
+const float Yaw_rate_kp = 3.0f;//左右の向き
 const float Yaw_rate_ti = 0.8f;
 const float Yaw_rate_td = 0.01f;
 const float Yaw_rate_eta = 0.125f;
@@ -86,7 +86,7 @@ const float z_dot_ti = 13.5f;
 const float z_dot_td = 0.005f;
 const float z_dot_eta = 0.125f;
 
-//Times　　時間経過を記録し、制御の正確性を確保するための変数群です。例えば Elapsed_time は、コードが動作してからの経過時間を管理するために使用されます。
+//Times　　時間経過を記録し、制御の正確性を確保するための変数群です。前の処理からどのくらいの時間がたったかを記録
 volatile float Elapsed_time=0.0f;
 volatile float Old_Elapsed_time=0.0f;
 volatile float Interval_time=0.0f;
@@ -97,7 +97,7 @@ uint8_t AngleControlCounter=0;
 uint16_t RateControlCounter=0;
 uint16_t OffsetCounter=0;
 
-//Motor Duty 
+//Motor Duty 四つのモーターにどれだけの回転支持を出すか記録する変数（0.0~1.0（０～１００％））
 volatile float FrontRight_motor_duty=0.0f;
 volatile float FrontLeft_motor_duty=0.0f;
 volatile float RearRight_motor_duty=0.0f;
@@ -124,18 +124,19 @@ volatile float Roll_rate_command=0.0f, Pitch_rate_command=0.0f, Yaw_rate_command
 //Angle comannd
 volatile float Roll_angle_command=0.0f, Pitch_angle_command=0.0f, Yaw_angle_command=0.0f;
 
-//Offset
-volatile float Roll_angle_offset=0.0f, Pitch_angle_offset=0.0f, Yaw_angle_offset=0.0f;  
-volatile float Elevator_center=0.0f, Aileron_center=0.0f, Rudder_center=0.0f;
+//Offset　ドローンの初期設定や調整を行うための変数を宣言
+volatile float Roll_angle_offset=0.0f, Pitch_angle_offset=0.0f, Yaw_angle_offset=0.0f; //角度のオフセット ドローンの初期姿勢の補正
+volatile float Elevator_center=0.0f, Aileron_center=0.0f, Rudder_center=0.0f;//操縦スティックのセンサーの位置　スティックのゼロ位置補正
 
-//Machine state & flag
-float Timevalue=0.0f;
-uint8_t Mode = INIT_MODE;
-uint8_t Control_mode = ANGLECONTROL;
-volatile uint8_t LockMode=0;
-float Motor_on_duty_threshold = 0.1f;
-float Angle_control_on_duty_threshold = 0.5f;
-int8_t BtnA_counter = 0;
+//Machine state & flag　ドローンの状態やフラグ（状況を示す）変数を管理
+float Timevalue=0.0f;//プログラムが開始してからの時間経過を記録する変数
+uint8_t Mode = INIT_MODE;//初期化モード
+uint8_t Control_mode = ANGLECONTROL;//角度制御モード
+//フラグ変数
+volatile uint8_t LockMode=0;// ドローンの操作や制御がロックされている状態を示すフラグ
+float Motor_on_duty_threshold = 0.1f;//モーターが動作を開始するための最低出力値の閾値(いきち)です。この値を超えるとモーターが動き始めます。
+float Angle_control_on_duty_threshold = 0.5f;//角度制御を有効にするためのモーターの出力閾値
+int8_t BtnA_counter = 0;//ボタン
 uint8_t BtnA_on_flag = 0;
 uint8_t BtnA_off_flag =1;
 volatile uint8_t Loop_flag = 0;
