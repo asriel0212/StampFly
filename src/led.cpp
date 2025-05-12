@@ -16,49 +16,60 @@ https://lang-ship.com/blog/work/fastled/
 #include "rc.hpp"
 #include "flight_control.hpp"
 
-uint32_t Led_color = 0x000000;
-uint32_t Led_color2 = 255;
-uint32_t Led_color3 = 0x000000;
-uint16_t LedBlinkCounter=0;
-CRGB led_esp[1];
-CRGB led_onboard[2];
+// LEDの色を設定する変数
+uint32_t Led_color = 0x000000; // 現在のLEDの色（デフォルトはOFF）
+uint32_t Led_color2 = 255;    // 点滅・アニメーション用の色
+uint32_t Led_color3 = 0x000000; // 未使用（将来的な拡張）
+uint16_t LedBlinkCounter=0;    // LEDの点滅カウンター
+CRGB led_esp[1];      // ESP32側のLED（1個）
+CRGB led_onboard[2];  // 基板上のLED（2個）
 
+// LED制御関数の宣言
 void led_drive(void);
 void onboard_led1(CRGB p, uint8_t state);
 void onboard_led2(CRGB p, uint8_t state);
 void esp_led(CRGB p, uint8_t state);
 
-
+// **LEDの初期化**
 void led_init(void)
 {
+  // 基板上のLED（2個）を初期化
   FastLED.addLeds<WS2812, PIN_LED_ONBORD, GRB>(led_onboard, 2);
+   // ESP側のLED（1個）を初期化
   FastLED.addLeds<WS2812, PIN_LED_ESP, GRB>(led_esp, 1);
 }
 
+// **LEDの表示を適用**
 void led_show(void)
 {
   FastLED.show();
 }
 
+// **LEDの動作制御（飛行モードや状態に応じて変更）**
 void led_drive(void)
 {
   if (Mode == AVERAGE_MODE)
   {
+    // 通常モード（紫色に点灯）
     onboard_led1(PERPLE, 1);
     onboard_led2(PERPLE, 1);
   }
   else if(Mode == FLIGHT_MODE)
   {
+    // 飛行中の角度制御モード
     if(Control_mode == ANGLECONTROL)
     {
-      if(Flip_flag==0)Led_color=0xffff00;
-      else Led_color = 0xFF9933;
+      if(Flip_flag==0)Led_color=0xffff00; // 通常飛行（黄色）
+      else Led_color = 0xFF9933; // フリップ時（オレンジ）
     }
-    else Led_color = 0xDC669B;
+    else Led_color = 0xDC669B; // 通常飛行時の色（ピンク系）
 
+    // 高度維持時（濃い紫）
     if(Alt_flag == 1) Led_color = 0x331155;
+    // RC信号エラー時（赤）
     if(Rc_err_flag == 1) Led_color = 0xff0000;
 
+    // **低電圧時の処理**
     if (Under_voltage_flag < UNDER_VOLTAGE_COUNT) {onboard_led1(Led_color, 1);onboard_led2(Led_color, 1);}
     else {onboard_led1(POWEROFFCOLOR,1);onboard_led1(POWEROFFCOLOR,1);}
   }
@@ -67,7 +78,7 @@ void led_drive(void)
   {
     if(Under_voltage_flag < UNDER_VOLTAGE_COUNT)
     {
-      //イルミネーション
+      // **イルミネーション処理**
       if(LedBlinkCounter==0){//<10
         if (Led_color2&0x800000)Led_color2 = (Led_color2<<1)|1;
         else Led_color2=Led_color2<<1; 
@@ -81,7 +92,7 @@ void led_drive(void)
     }
     else
     {
-      //水色点滅
+      // **水色の点滅（電圧低下時）**
       if (LedBlinkCounter < 10) { onboard_led1(POWEROFFCOLOR,1);onboard_led2(POWEROFFCOLOR,1);}
       else if (LedBlinkCounter < 200) { onboard_led1(POWEROFFCOLOR,0);onboard_led2(POWEROFFCOLOR,0);}
       else LedBlinkCounter = 0;
@@ -89,22 +100,24 @@ void led_drive(void)
     }
   }
 
-  //LED show
+  //LED show　**LEDの状態を適用**
   FastLED.show();
 }
 
+// **基板上のLED1の制御**
 void onboard_led1(CRGB p, uint8_t state)
 {
   if (state ==1)
   {
-    led_onboard[0]=p;
+    led_onboard[0]=p;　 // LEDを点灯
   } 
   else {
-    led_onboard[0]=0;
+    led_onboard[0]=0;　// 消灯
   }
   return;
 }
 
+// **基板上のLED2の制御**
 void onboard_led2(CRGB p, uint8_t state)
 {
   if (state ==1)
@@ -117,9 +130,10 @@ void onboard_led2(CRGB p, uint8_t state)
   return;
 }
 
+// **ESP側のLEDの制御**
 void esp_led(CRGB p, uint8_t state)
 {
-  if (state ==1) led_esp[0]=p;
-  else led_esp[0]=0;
+  if (state ==1) led_esp[0]=p;　// LEDを点灯
+  else led_esp[0]=0;　// 消灯
   return;
 }
