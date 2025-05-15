@@ -42,7 +42,7 @@ void telemetry(void)
 
   if(Telem_mode==0)
   {
-    //Send header data
+    //Send header data  <- 送るんじゃなくて生成
     Telem_mode = 1;
     make_telemetry_header_data(senddata);
 
@@ -56,7 +56,7 @@ void telemetry(void)
     if (Telem_cnt == 0)telemetry_sequence();
     Telem_cnt++;
     if (Telem_cnt>N-1)Telem_cnt = 0;
-    //telemetry_sequence();
+    //telemetry_sequence();  <-　なぜ消さないのか意味不
   }
 }
 
@@ -68,11 +68,11 @@ void telemetry_sequence(void)
   {
     case 1:
       make_telemetry_data(senddata);
-      //Send !
-      if(telemetry_send(senddata, sizeof(senddata))==1)esp_led(0x110000, 1);//Telemetory Reciver OFF
-      else esp_led(0x001100, 1);//Telemetory Reciver ON
+      //Send !  <-　頭悪い。何も送っていない
+      if(telemetry_send(senddata, sizeof(senddata))==1)esp_led(0x110000, 1);//Telemetory Reciver OFF  <-　真偽不明。とりあえずledの値を変えている
+      else esp_led(0x001100, 1);//Telemetory Reciver ON <-　真偽不明。とりあえずledの値を変えている
 
-      //Telem_mode = 2;
+      //Telem_mode = 2;  <-  使ってないのに何であるのかわからん
       break;
   }
 }
@@ -164,7 +164,7 @@ void telemetry400(void)
 
   if(Telem_mode==0)
   {
-    //Send header data
+    //Send header data  <- 送るんじゃなくて生成
     Telem_mode = 1;
     make_telemetry_header_data(senddata);
 
@@ -182,7 +182,7 @@ void telemetry_sequence400(void)
   uint8_t senddata[MAXINDEX]; 
 
   make_telemetry_data400(senddata);
-  //Send !
+  //Send !  <-　頭悪い。何も送っていない
   if(telemetry_send(senddata, MININDEX)==1)esp_led(0x110000, 1);//Telemetory Reciver OFF
   else esp_led(0x001100, 1);//Telemetory Reciver ON
 }
@@ -204,13 +204,13 @@ void make_telemetry_data400(uint8_t* senddata)
 
 void data_set(uint8_t* datalist, float value, uint8_t* index)
 {
-  data2log(datalist, value, *index);
-  *index = *index + 4;
+  data2log(datalist, value, *index);//現在の index の位置に value を格納する。
+  *index = *index + 4;//次回 data_set を呼び出す際に datalist の次のデータを記録する位置が 4 バイト分進む仕組み
 }
 
 void data2log(uint8_t* data_list, float add_data, uint8_t index)
 {
-    uint8_t d_int[4];
+    uint8_t d_int[4]; //d = destination（目的地）
     float d_float = add_data;
     float2byte(d_float, d_int);
     append_data(data_list, d_int, index, 4);
@@ -219,7 +219,7 @@ void data2log(uint8_t* data_list, float add_data, uint8_t index)
 void float2byte(float x, uint8_t* dst)
 {
   uint8_t* dummy;
-  dummy = (uint8_t*)&x;
+  dummy = (uint8_t*)&x;//float のメモリをそのまま uint8_t の配列として参照し、各バイトを格納。
   dst[0]=dummy[0];
   dst[1]=dummy[1];
   dst[2]=dummy[2];
@@ -230,6 +230,6 @@ void append_data(uint8_t* data , uint8_t* newdata, uint8_t index, uint8_t len)
 {
   for(uint8_t i=index;i<index+len;i++)
   {
-    data[i]=newdata[i-index];
+    data[i]=newdata[i-index];//data_list の index 位置に newdata をコピー。これにより、4バイト分のデータ（変換されたfloatの値）が格納される
   }
 }
