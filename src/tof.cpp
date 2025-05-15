@@ -23,56 +23,58 @@ VL53LXセンサーを利用することで、微小な距離変化を測定可�
 #include <Arduino.h>
 #include "tof.hpp"
 
+//libからVL53LXを参照する
 VL53LX_Dev_t tof_front;
 VL53LX_Dev_t tof_bottom;
 
 VL53LX_DEV ToF_front=&tof_front;
 VL53LX_DEV ToF_bottom=&tof_bottom;
 
-volatile uint8_t ToF_bottom_data_ready_flag;
+volatile uint8_t ToF_bottom_data_ready_flag;//volatile -> 外部のプロセスやハードウェアによって変更される可能性があることを示しています。コンパイラはこの変数に対する読み書きを最適化せず、毎回メモリから直接読み込むようにします。 
 
-void IRAM_ATTR tof_int()
+
+void IRAM_ATTR tof_int()// 割り込みハンドラ（ToFデータ準備完了）  ハンドラ -> 割り込みルーチンみたいなの 
 {
   ToF_bottom_data_ready_flag = 1;
 }
 
-uint16_t tof_bottom_get_range()
+uint16_t tof_bottom_get_range()// 下のToFセンサーの距離測定値を取得
 {
     return tof_range_get(ToF_bottom);
 }
 
-uint16_t tof_front_get_range()
+uint16_t tof_front_get_range()// 前のToFセンサーの距離測定値を取得
 {
     return tof_range_get(ToF_front);
 }
 
 
-void tof_init(void)
+void tof_init(void)//tofの初期設定
 {
   uint8_t byteData;
   uint16_t wordData;
 
-  ToF_bottom->comms_speed_khz = 400;
-  ToF_bottom->i2c_slave_address = 0x29;
+  ToF_bottom->comms_speed_khz = 400; //400khzに設定
+  ToF_bottom->i2c_slave_address = 0x29;//下のtofのI2Cアドレスを0x29に変更
 
-  ToF_front->comms_speed_khz = 400;
-  ToF_front->i2c_slave_address = 0x29;
+  ToF_front->comms_speed_khz = 400;//400khzに設定
+  ToF_front->i2c_slave_address = 0x29;//前のtofのI2Cアドレスを0x29に変更
 
 
   //USBSerial.printf("#tof_i2c_init_status:%d\r\n",vl53lx_i2c_init());  
 
-  //ToF Pin Initialize
+  //ToFのピンの初期化
   pinMode(XSHUT_BOTTOM, OUTPUT);
   pinMode(XSHUT_FRONT, OUTPUT);
   pinMode(INT_BOTTOM, INPUT);
   pinMode(INT_FRONT, INPUT);
   pinMode(USER_A, INPUT_PULLUP);
   
-  //ToF Disable
+  //ToFを一時的に無効にする
   digitalWrite(XSHUT_BOTTOM, LOW);
   digitalWrite(XSHUT_FRONT, LOW);
 
-  //Front ToF I2C address to 0x54  
+  //前のToFのI2Cアドレスを0x54にする  
   digitalWrite(XSHUT_FRONT, HIGH);
   delay(100);
   VL53LX_SetDeviceAddress(ToF_front, 0x54);
@@ -81,7 +83,7 @@ void tof_init(void)
   delay(100);
   digitalWrite(XSHUT_BOTTOM, HIGH);
 
-  //Bttom ToF setting
+  //下のToFの設定
   USBSerial.printf("#1 WaitDeviceBooted Status:%d\n\r",VL53LX_WaitDeviceBooted(ToF_bottom));
   USBSerial.printf("#1 DataInit Status:%d\n\r",VL53LX_DataInit(ToF_bottom));
   USBSerial.printf("#1 Range setting  Status:%d\n\r", VL53LX_SetDistanceMode(ToF_bottom, VL53LX_DISTANCEMODE_MEDIUM));
@@ -93,7 +95,7 @@ void tof_init(void)
   USBSerial.printf("#1 RdWord Status:%d\n\r", VL53LX_RdWord(ToF_bottom, 0x010F, &wordData));
   USBSerial.printf("#1 VL53LX: %04X\n\r", wordData);
   
-  //Front ToF Setting
+  //前のToFの設定
   USBSerial.printf("#2 WaitDeviceBooted Status:%d\n\r",VL53LX_WaitDeviceBooted(ToF_front));
   USBSerial.printf("#2 DataInit Status:%d\n\r",VL53LX_DataInit(ToF_front));
   USBSerial.printf("#1 Range setting  Status:%d\n\r", VL53LX_SetDistanceMode(ToF_front, VL53LX_DISTANCEMODE_LONG));
@@ -105,9 +107,9 @@ void tof_init(void)
   USBSerial.printf("#2 RdWord Status:%d\n\r", VL53LX_RdWord(ToF_front, 0x010F, &wordData));
   USBSerial.printf("#2 VL53LX: %04X\n\r", wordData);
 
-  attachInterrupt(INT_BOTTOM, &tof_int, FALLING);
+  attachInterrupt(INT_BOTTOM, &tof_int, FALLING);//
 
-  VL53LX_ClearInterruptAndStartMeasurement(ToF_bottom);
+  VL53LX_ClearInterruptAndStartMeasurement(ToF_bottom);//
   delay(100);
   USBSerial.printf("#Start Measurement Status:%d\n\r", VL53LX_StartMeasurement(ToF_bottom));
 
