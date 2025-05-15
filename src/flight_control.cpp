@@ -47,10 +47,11 @@ float Control_period = 0.0025f;//400Hz
 
 //PID Gain　　ロール（横回転）　　ピッチ（前後回転）　　ヨー（機体を上からみたときの回転方向の傾き）
 //Rate control PID gain　角速度制御
-const float Roll_rate_kp = 0.6f;//横回転の速さを制御
-const float Roll_rate_ti = 0.7f;
-const float Roll_rate_td = 0.01;
-const float Roll_rate_eta = 0.125f;
+//p（比例）i（積分）d（微分）
+const float Roll_rate_kp = 0.6f;//横回転の速さを制御　　kp:比例ゲイン
+const float Roll_rate_ti = 0.7f;//積分時間
+const float Roll_rate_td = 0.01;//微分時間
+const float Roll_rate_eta = 0.125f;//微分フィルタ係数　ノイズの影響を減らす（安定さ向上）
 
 const float Pitch_rate_kp = 0.75f;//前後回転の速さ
 const float Pitch_rate_ti = 0.7f;
@@ -126,130 +127,132 @@ volatile float Roll_angle_command=0.0f, Pitch_angle_command=0.0f, Yaw_angle_comm
 
 //Offset　ドローンの初期設定や調整を行うための変数を宣言
 volatile float Roll_angle_offset=0.0f, Pitch_angle_offset=0.0f, Yaw_angle_offset=0.0f; //角度のオフセット ドローンの初期姿勢の補正
-volatile float Elevator_center=0.0f, Aileron_center=0.0f, Rudder_center=0.0f;//操縦スティックのセンサーの位置　スティックのゼロ位置補正
+volatile float Elevator_center=0.0f, Aileron_center=0.0f, Rudder_center=0.0f;          //操縦スティックのセンサーの位置　スティックのゼロ位置補正
 
 //Machine state & flag　ドローンの状態やフラグ（状況を示す）変数を管理
-float Timevalue=0.0f;//プログラムが開始してからの時間経過を記録する変数
-uint8_t Mode = INIT_MODE;//初期化モード
+float Timevalue=0.0f;               //プログラムが開始してからの時間経過を記録する変数
+uint8_t Mode = INIT_MODE;           //初期化モード
 uint8_t Control_mode = ANGLECONTROL;//角度制御モード
 //フラグ変数
-volatile uint8_t LockMode=0;// ドローンの操作や制御がロックされている状態を示すフラグ
-float Motor_on_duty_threshold = 0.1f;//モーターが動作を開始するための最低出力値の閾値(いきち)です。この値を超えるとモーターが動き始めます。
+volatile uint8_t LockMode=0;                 // ドローンの操作や制御がロックされている状態を示すフラグ
+float Motor_on_duty_threshold = 0.1f;        //モーターが動作を開始するための最低出力値の閾値(いきち)です。この値を超えるとモーターが動き始めます。
 float Angle_control_on_duty_threshold = 0.5f;//角度制御を有効にするためのモーターの出力閾値
-int8_t BtnA_counter = 0;//ボタンAのカウント
-uint8_t BtnA_on_flag = 0;
-uint8_t BtnA_off_flag =1;
-volatile uint8_t Loop_flag = 0;
-volatile uint8_t Angle_control_flag = 0;
-uint8_t Stick_return_flag = 0;
-uint8_t Throttle_control_mode = 0;
+int8_t BtnA_counter = 0;                     //ボタンAが押された回数や押されている時間のカウント
+uint8_t BtnA_on_flag = 0;                    //ボタンが押された瞬間を検出フラグ （ONになったら1にする）
+uint8_t BtnA_off_flag =1;                    // ボタンAが「離された瞬間」を検出するためのフラグ。　初期値が１だから最初は何も押されていない
+volatile uint8_t Loop_flag = 0;              // メインループの中で、処理のタイミングを制御するためのフラグ。
+volatile uint8_t Angle_control_flag = 0;     //ドローンの水平維持や自動姿勢制御をON/OFF。
+uint8_t Stick_return_flag = 0;               //スティックが「元の位置に戻ったこと」を検出するフラグ。
+uint8_t Throttle_control_mode = 0;　         // スロットル（出力）の制御モードを示す変数。 
 
-//for flip
-float FliRoll_rate_time = 2.0;
-uint8_t Flip_flag = 0;
-uint16_t Flip_counter = 0; 
-float Flip_time = 2.0;
-volatile uint8_t Ahrs_reset_flag=0;
-float T_flip;
+//for flip フリップ（宙返り）動作やIMU（姿勢センサー）のリセット
+float FliRoll_rate_time = 2.0;      // フリップ動作の際の「ロール軸の回転にかかる時間」を秒単位で指定
+uint8_t Flip_flag = 0;              //フリップ動作を行うかどうかのスイッチ（フラグ）
+uint16_t Flip_counter = 0;          // フリップ動作のカウンター。処理の中で時間やステップを計測するために使われる。
+float Flip_time = 2.0;              //フリップにかける全体の時間（秒）
+volatile uint8_t Ahrs_reset_flag=0; // 	IMUの再初期化の指示  AHRS（姿勢推定：Attitude and Heading Reference System）のリセット指示フラグ。
+float T_flip;                       //フリップに関する「経過時間」や「開始時刻」を記録するための変数。
 
 //PID object and etc.
-PID p_pid;
-PID q_pid;
-PID r_pid;
-PID phi_pid;
-PID theta_pid;
-PID psi_pid;
+PID p_pid; 	   //角速度 p  ロール
+PID q_pid; 	   //角速度 q  ピッチ
+PID r_pid; 	   //角速度 r  	ヨー
+PID phi_pid; 	 //角度 φ  ロール
+PID theta_pid; //角度 θ  ピッチ
+PID psi_pid; 	 //角度 ψ  	ヨー
 //PID alt;
-PID alt_pid;
-PID z_dot_pid;
-Filter Thrust_filtered;
-Filter Duty_fr;
-Filter Duty_fl;
-Filter Duty_rr;
-Filter Duty_rl;
+PID alt_pid; //高度
+PID z_dot_pid; //上昇/下降速度
+Filter Thrust_filtered; //推力	センサーや計算結果の推力値を平滑化
+Filter Duty_fr; //	右前モーター	モーターPWM信号のフィルター
+Filter Duty_fl; //	左前モーター
+Filter Duty_rr; //  右後モーター
+Filter Duty_rl; //  左後モーター
 
-volatile float Thrust0=0.0;
-uint8_t Alt_flag = 0;
-float Alt_max = 0.5;
+//ドローンなどの機体の推力（Thrust）や高度（Altitude）に関する制御
+volatile float Thrust0=0.0;  //ベース推力値（高度維持などに使用）
+uint8_t Alt_flag = 0;        //	高度制御を行うかのON/OFFフラグ
+float Alt_max = 0.5;         //	最大高度のしきい値（例：0.5m）
 
 //速度目標Z
-float Z_dot_ref = 0.0f;
+float Z_dot_ref = 0.0f;  //上昇・下降速度を設定（例：0.2 = 上昇） m/s
 
 //高度目標
-const float Alt_ref_min = 0.3;
-volatile float Alt_ref = 0.5;
+const float Alt_ref_min = 0.3; //	許容される最低高度
+volatile float Alt_ref = 0.5;  // 現在の目標高度  高度制御の目標値（PIDがこの高さに合わせる）
 
-//Function declaration
-void init_pwm();
-void control_init();
-void variable_init(void);
-void get_command(void);
-void angle_control(void);
-void rate_control(void);
-void output_data(void);
-void output_sensor_raw_data(void);
-void motor_stop(void);
-uint8_t judge_mode_change(void);
-uint8_t get_arming_button(void);
-uint8_t get_flip_button(void);
-void reset_rate_control(void);
-void reset_angle_control(void);
+//Function declaration 関数の宣言（プロトタイプ）一覧
+void init_pwm();                   //PWM（Pulse Width Modulation）制御の初期化
+void control_init();               //PID制御や各種制御用変数・構造体の初期化
+void variable_init(void);          //使用している全体の変数を初期値にリセットします
+void get_command(void);            //リモコンやシリアルなどからの操作コマンドを受信・処理する関数
+void angle_control(void);          //姿勢（角度：ロール・ピッチ・ヨー）をPIDで制御
+void rate_control(void);           //角速度（回転の速さ）をPIDで制御
+void output_data(void);            //制御結果や状態を外部（PCやログ）に送信
+void output_sensor_raw_data(void); //IMUなどのセンサーからの生データをそのまま出力
+void motor_stop(void);             //モーター出力を完全に停止
+uint8_t judge_mode_change(void);   //モード切り替え（例：マニュアル／自動、ホバリング／フリップ）の判定
+uint8_t get_arming_button(void);   //モーター起動（arming）ボタンの状態を取得
+uint8_t get_flip_button(void);     //フリップ動作（宙返り）用のボタン状態を取得
+void reset_rate_control(void);     //角速度制御（rate PID）の積分項などをリセット
+void reset_angle_control(void);    //角度制御に使う積分項や誤差記録などをリセットする
 
-//割り込み関数
-//Intrupt function
-hw_timer_t * timer = NULL;
-void IRAM_ATTR onTimer() 
-{
-  Loop_flag = 1;
+//割り込み関数 タイマー割り込み処理  リアルタイムで処理を繰り返すための重要な仕組み
+//一定間隔で「Loop_flag = 1」をセットすることで、メインループ側に「今処理していいよ」と合図する。
+//Intrupt function                         全体像  
+hw_timer_t * timer = NULL;        //  タイマー（例：100Hzなど）が定期的に onTimer() を呼ぶ。
+void IRAM_ATTR onTimer()          //  Loop_flag を 1 にする。
+{                                 //  メインループ内でこのフラグが 1 になったら、1回だけ制御処理を行う。
+  Loop_flag = 1;                  //  Loop_flag を 0 に戻して、次のタイマー割り込みを待つ。
 }
 
-//Initialize Multi copter
-void init_copter(void)
+//Initialize Multi copter　　マルチコプター（ドローン）の初期化処理
+void init_copter(void)　　　　init_copter()：マイコンやドローンを電源オンしたときに実行される初期設定関数
 {
   //Initialize Mode
   Mode = INIT_MODE;
 
-  //Initialaze LED function
-  led_init();
-  esp_led(0x110000, 1);
-  onboard_led1(WHITE, 1);
+  //Initialaze LED function      LED初期化と点灯（視覚的に状態表示）
+  led_init();　　　　　　　　　　　//： LED制御の準備
+  esp_led(0x110000, 1);　　　　　 //： これは RGB LED に赤っぽい色を表示する処理（0x110000 は暗めの赤）。
+  onboard_led1(WHITE, 1);　　　　 //： 機体に搭載されたLEDを白色に点灯
   onboard_led2(WHITE, 1);
-  led_show();
+  led_show();　　　　　　　　　　　//： LEDの設定を反映
  
   //Initialize Serial communication
-  USBSerial.begin(115200);
-  delay(1500);
-  USBSerial.printf("Start StampS3FPV!\r\n");
+  USBSerial.begin(115200);                     **USBシリアル通信の初期化**（115200bps）
+  delay(1500);                                 通信安定のために 1.5 秒待機
+  USBSerial.printf("Start StampS3FPV!\r\n");   起動メッセージをPC側に送信（デバッグや確認用）。
   
   //Initialize PWM
-  init_pwm();
-  sensor_init();
-  USBSerial.printf("Finish sensor init!\r\n");
+  init_pwm();                                     ： モーター制御用のPWM出力を初期化
+  sensor_init();                                  ： IMUや気圧センサなどの初期化
+  USBSerial.printf("Finish sensor init!\r\n");       初期化完了メッセージを表示
 
-  //PID GAIN and etc. Init
-  control_init();
+  //PID GAIN and etc. Init         **PID制御器（角度・角速度・高度など）の初期化処理**
+  control_init();                    PIDゲインの設定や内部変数のリセットが行われるはずです
 
   //Initilize Radio control
-  rc_init();
+  rc_init();                         リモコン（RC）受信機の初期化    通信の準備やキャリブレーションが含まれる可能性あり
 
   //割り込み設定
-  //Initialize intrupt
-  timer = timerBegin(0, 80, true);
-  timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 2500, true);
-  timerAlarmEnable(timer);
-  USBSerial.printf("Finish StampFly init!\r\n");
+  //Initialize intrupt                          **タイマーのセットアップ**（ESP32などの環境を想定）
+  timer = timerBegin(0, 80, true);                タイマー0、分周値80（= 1us単位）、カウントアップ
+  timerAttachInterrupt(timer, &onTimer, true);    割り込み関数 `onTimer()` を登録
+  timerAlarmWrite(timer, 2500, true);           **2.5msごと（= 400Hz）** に割り込み
+  timerAlarmEnable(timer);                        タイマー割り込み開始         400Hzの制御ループが実現されていると推測できます
+  USBSerial.printf("Finish StampFly init!\r\n");   初期化完了メッセージと、「Enjoy Flight!」というフライト開始の合図。
   USBSerial.printf("Enjoy Flight!\r\n");
 }
 
-//Main loop
+//Main loop     ドローンの制御ループ（メインループ）を400Hzで実行するための中心的な処理uj
 void loop_400Hz(void)
 {
   static uint8_t led=1;
   float sense_time;
   //割り込みにより400Hzで以降のコードが実行
-  while(Loop_flag==0);
-  Loop_flag = 0;
+  while(Loop_flag==0);  //タイマー割り込みによって Loop_flag == 1 になるまで待つ
+  Loop_flag = 0;        //フラグが立ったらすぐ処理開始、再び 0 に戻して次の割り込み待機
   
   E_time = micros();
   Old_Elapsed_time = Elapsed_time;
