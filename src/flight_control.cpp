@@ -207,7 +207,7 @@ void IRAM_ATTR onTimer()          //  Loop_flag を 1 にする。
 }
 
 //Initialize Multi copter　　マルチコプター（ドローン）の初期化処理
-void init_copter(void)　　　　init_copter()：マイコンやドローンを電源オンしたときに実行される初期設定関数
+void init_copter(void)　　　　//init_copter()：マイコンやドローンを電源オンしたときに実行される初期設定関数
 {
   //Initialize Mode
   Mode = INIT_MODE;
@@ -220,28 +220,28 @@ void init_copter(void)　　　　init_copter()：マイコンやドローンを
   led_show();　　　　　　　　　　　//： LEDの設定を反映
  
   //Initialize Serial communication
-  USBSerial.begin(115200);                     **USBシリアル通信の初期化**（115200bps）
-  delay(1500);                                 通信安定のために 1.5 秒待機
-  USBSerial.printf("Start StampS3FPV!\r\n");   起動メッセージをPC側に送信（デバッグや確認用）。
+  USBSerial.begin(115200);                    // **USBシリアル通信の初期化**（115200bps）
+  delay(1500);                                // 通信安定のために 1.5 秒待機
+  USBSerial.printf("Start StampS3FPV!\r\n");  // 起動メッセージをPC側に送信（デバッグや確認用）。
   
   //Initialize PWM
-  init_pwm();                                     ： モーター制御用のPWM出力を初期化
-  sensor_init();                                  ： IMUや気圧センサなどの初期化
-  USBSerial.printf("Finish sensor init!\r\n");       初期化完了メッセージを表示
+  init_pwm();                                    // ： モーター制御用のPWM出力を初期化
+  sensor_init();                                //  ： IMUや気圧センサなどの初期化
+  USBSerial.printf("Finish sensor init!\r\n");    //   初期化完了メッセージを表示
 
-  //PID GAIN and etc. Init         **PID制御器（角度・角速度・高度など）の初期化処理**
-  control_init();                    PIDゲインの設定や内部変数のリセットが行われるはずです
+  //PID GAIN and etc. Init       //  **PID制御器（角度・角速度・高度など）の初期化処理**
+  control_init();               //     PIDゲインの設定や内部変数のリセットが行われるはずです
 
   //Initilize Radio control
-  rc_init();                         リモコン（RC）受信機の初期化    通信の準備やキャリブレーションが含まれる可能性あり
+  rc_init();                     //    リモコン（RC）受信機の初期化    通信の準備やキャリブレーションが含まれる可能性あり
 
   //割り込み設定
-  //Initialize intrupt                          **タイマーのセットアップ**（ESP32などの環境を想定）
-  timer = timerBegin(0, 80, true);                タイマー0、分周値80（= 1us単位）、カウントアップ
-  timerAttachInterrupt(timer, &onTimer, true);    割り込み関数 `onTimer()` を登録
-  timerAlarmWrite(timer, 2500, true);           **2.5msごと（= 400Hz）** に割り込み
-  timerAlarmEnable(timer);                        タイマー割り込み開始         400Hzの制御ループが実現されていると推測できます
-  USBSerial.printf("Finish StampFly init!\r\n");   初期化完了メッセージと、「Enjoy Flight!」というフライト開始の合図。
+  //Initialize intrupt                         // **タイマーのセットアップ**（ESP32などの環境を想定）
+  timer = timerBegin(0, 80, true);            //    タイマー0、分周値80（= 1us単位）、カウントアップ
+  timerAttachInterrupt(timer, &onTimer, true);//    割り込み関数 `onTimer()` を登録
+  timerAlarmWrite(timer, 2500, true);         //  **2.5msごと（= 400Hz）** に割り込み
+  timerAlarmEnable(timer);                      //  タイマー割り込み開始         400Hzの制御ループが実現されていると推測できます
+  USBSerial.printf("Finish StampFly init!\r\n"); //  初期化完了メッセージと、「Enjoy Flight!」というフライト開始の合図。
   USBSerial.printf("Enjoy Flight!\r\n");
 }
 
