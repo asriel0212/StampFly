@@ -115,6 +115,7 @@ void tof_init(void)//tofの初期設定
 
 }
 
+//Tofの範囲測定値を取得する
 uint16_t tof_range_get(VL53LX_DEV dev)
 {
   uint16_t range;
@@ -122,7 +123,8 @@ uint16_t tof_range_get(VL53LX_DEV dev)
   uint16_t range_max;
   uint16_t range_ave;
   uint8_t count;
-  
+
+  //測定値をポインタに変える
   VL53LX_MultiRangingData_t MultiRangingData;
   VL53LX_MultiRangingData_t *pMultiRangingData=&MultiRangingData;
 
@@ -135,12 +137,12 @@ uint16_t tof_range_get(VL53LX_DEV dev)
   range_min = 10000;
   range_max = 0;
   range_ave = 0;
-  if(no_of_object_found==0)
+  if(no_of_object_found==0)//オブジェクトが一つも見つからなかったとき
   {
     range_min = 9999;
     range_max = 0;
   }
-  else
+  else//オブジェクトが見つかった時
   {
     for(uint8_t j=0;j<no_of_object_found;j++){
                   count=0;
@@ -150,14 +152,14 @@ uint16_t tof_range_get(VL53LX_DEV dev)
                     range = MultiRangingData.RangeData[j].RangeMilliMeter;
                     if(range_min > range) range_min = range;
                     if(range_max < range) range_max = range;
-                    range_ave = range_ave + range;
+                    range_ave = range_ave + range;//距離データの最小、最大値を更新し、測定値の合計を計算
                   }
-                  if(count!=0)range_ave = range_ave / count;
+                  if(count!=0)range_ave = range_ave / count;//平均値の計算
                   //USBSerial.printf("No %d Status=%d Range %d mm\n\r",j, MultiRangingData.RangeData[j].RangeStatus,MultiRangingData.RangeData[j].RangeMaxMilliMeter);
     }     
   }
-  VL53LX_ClearInterruptAndStartMeasurement(dev);
-  return range_ave;
+  VL53LX_ClearInterruptAndStartMeasurement(dev);//平均値のクリア
+  return range_ave;//平均値を返却
 }
 
 void tof_test_ranging(VL53LX_DEV dev)
