@@ -20,10 +20,11 @@ IoTデバイス: センサーを用いた環境データの収集。
 #include "tof.hpp" 
 #include "flight_control.hpp"
 
-Madgwick Drone_ahrs;
-Alt_kalman EstimatedAltitude;
+Madgwick Drone_ahrs;      //姿勢推定アルゴリズム
+Alt_kalman EstimatedAltitude;    //不確実な情報を統合して、より正確な推定を行うアルゴリズム
 
-INA3221 ina3221(INA3221_ADDR40_GND);// Set I2C address to 0x40 (A0 pin -> GND)
+//INA3221（電圧監視IC）のインスタンスを生成し、I2Cアドレスを指定して初期化
+INA3221 ina3221(INA3221_ADDR40_GND);//I2Cアドレスを0x40にセットする (A0 pin -> GND)
 Filter acc_filter;
 Filter az_filter;
 Filter voltage_filter;
@@ -36,7 +37,7 @@ Filter raw_gy_filter;
 Filter raw_gz_filter;
 Filter alt_filter;
 
-//Sensor data
+//センサーデータ
 volatile float Roll_angle=0.0f, Pitch_angle=0.0f, Yaw_angle=0.0f;
 volatile float Roll_rate, Pitch_rate, Yaw_rate;
 volatile float Roll_rate_offset=0.0f, Pitch_rate_offset=0.0f, Yaw_rate_offset=0.0f;
@@ -65,6 +66,7 @@ volatile uint8_t Under_voltage_flag = 0;
 //volatile uint8_t ToF_bottom_data_ready_flag;
 volatile uint16_t Range=1000;
 
+//I2Cデバイスをスキャンし、接続されているI2Cアドレスを表示
 uint8_t scan_i2c()
 {
   USBSerial.println ("I2C scanner. Scanning ...");
@@ -89,6 +91,7 @@ uint8_t scan_i2c()
   return count;
 }
 
+//ジャイロや加速度センサーのオフセット値をリセットし、カウンターを初期化
 void sensor_reset_offset(void)
 {
   Roll_rate_offset = 0.0f;
@@ -108,6 +111,7 @@ void sensor_calc_offset_avarage(void)
   Offset_counter++;
 }
 
+//INA3221を使って1000回電圧を取得して表示
 void test_voltage(void)
 {
   for (uint16_t i=0; i<1000; i++)
@@ -116,16 +120,20 @@ void test_voltage(void)
   }
 }
 
+//Madgwickフィルタをリセットし、姿勢データを初期化
 void ahrs_reset(void)
 {
   Drone_ahrs.reset();
 }
 
+//I2C通信を設定し、センサーを初期化
 void sensor_init()
 {
-  //beep_init();
+  //beep_init();　<-　意味不
  
   Wire1.begin(SDA_PIN, SCL_PIN,400000UL);
+
+  //I2C通信が確認できない場合、エラーメッセージを出し、システムを停止
   if(scan_i2c()==0)
   {
     USBSerial.printf("No I2C device!\r\n");
@@ -206,56 +214,67 @@ float sensor_read(void)
   //Y軸：前後（前が正）左肩上がりが回転の正
   //Z軸：上下（上が正）左回りが回転の正
 
-  //Get IMU raw data
-  imu_update();//IMUの値を読む前に必ず実行
+  //IMUセンサーの値を更新
+  imu_update();//IMUの値を読む前に必ず実行、
+
+  //acc -> 加速度 (Acceleration)
   acc_x = imu_get_acc_x();
   acc_y = imu_get_acc_y();
   acc_z = imu_get_acc_z();
+
+  //gyro -> 角速度 (Gyroscope / Angular Velocity)
   gyro_x = imu_get_gyro_x();
   gyro_y = imu_get_gyro_y();
   gyro_z = imu_get_gyro_z();
 
   //USBSerial.printf("%9.6f %9.6f %9.6f\n\r", Elapsed_time, sens_interval, acc_z);
 
-  //Axis Transform
+  //IMUの座標を航空座標系に変換
   Accel_x_raw =  acc_y;
   Accel_y_raw =  acc_x;
   Accel_z_raw = -acc_z;
+  //ジャイロデータも適切な座標に変換
   Roll_rate_raw  =  gyro_y;
   Pitch_rate_raw =  gyro_x;
   Yaw_rate_raw   = -gyro_z;
 
   if(Mode > AVERAGE_MODE)
   {
+    //それぞれの軸の加速度のフィルタリング
     Accel_x    = raw_ax_filter.update(Accel_x_raw, Interval_time);
     Accel_y    = raw_ay_filter.update(Accel_y_raw , Interval_time);
     Accel_z    = raw_az_filter.update(Accel_z_raw , Interval_time);
-    Accel_z_d  = raw_az_d_filter.update(Accel_z_raw - Accel_z_offset, Interval_time);
+    Accel_z_d  = raw_az_d_filter.update(Accel_z_raw - Accel_z_offset, Interval_time);//Z軸の変化量を計算.Accel_z_offset を引くことで、センサーの初期誤差を取り除き、純粋な高度変化だけを取得 できる
 
+    //それぞれのジャイロ(角速度)データをフィルタリング
     Roll_rate  = raw_gx_filter.update(Roll_rate_raw - Roll_rate_offset, Interval_time);
     Pitch_rate = raw_gy_filter.update(Pitch_rate_raw - Pitch_rate_offset, Interval_time);
     Yaw_rate   = raw_gz_filter.update(Yaw_rate_raw - Yaw_rate_offset, Interval_time);
 
+    //Madgwickを更新し、IMUのデータから姿勢を推定
     Drone_ahrs.updateIMU( (Pitch_rate)*(float)RAD_TO_DEG, 
                           (Roll_rate)*(float)RAD_TO_DEG,
                          -(Yaw_rate)*(float)RAD_TO_DEG,
                             Accel_y, Accel_x, -Accel_z);
+    //ドローンの現在のロール、ピッチ、ヨー角度を取得し、ラジアンに変換
     Roll_angle  =  Drone_ahrs.getPitch()*(float)DEG_TO_RAD;
     Pitch_angle =  Drone_ahrs.getRoll()*(float)DEG_TO_RAD;
     Yaw_angle   = -Drone_ahrs.getYaw()*(float)DEG_TO_RAD;
 
 
-    //for debug
+    //デバッグ用
     //USBSerial.printf("%6.3f %7.4f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f\n\r", 
     //  Elapsed_time, Interval_time, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z);
 
-    //Get Altitude (30Hz)
+    //加速度のZ軸データをフィルタリング (30Hz)
     Az = az_filter.update(-Accel_z_d, sens_interval);
 
-    if (dcnt>interval)
+    //ToFセンサーを使用し、高度の測定とノイズ除去を行う
+    if (dcnt>interval)//dcnt（カウント） の値が interval（間隔） を超えたときに処理を実行
     {
-      if(ToF_bottom_data_ready_flag)
+      if(ToF_bottom_data_ready_flag)//tof bottom flgが1の場合起動
       {
+        //micros() で現在の時刻を取得し、前回の測定時刻 old_alt_time と比較して、測定間隔 h を算出
         dcnt=0u;
         old_alt_time = alt_time;
         alt_time = micros()*1.0e-6;
@@ -266,17 +285,17 @@ float sensor_read(void)
         //old_dist[0] = dist;
         dist=tof_bottom_get_range();
                 
-        //外れ値処理
+        //外れ値処理。toFセンサーのデータに突然の急激な変化（ノイズや外れ値）がある場合、それを補正
         deff = dist - old_dist[1];
-        if ( deff > 500 )
+        if ( deff > 500 )//deffが 500mm以上の変化なら、前回の値を基に補正して異常値を抑える
         {
           dist = old_dist[1] + (old_dist[1] - old_dist[2])/2;
         }
-        else if ( deff < -500 )
+        else if ( deff < -500 )//deffが -500mm以下の変化なら、同様に補正
         {
           dist = old_dist[1] + (old_dist[1] - old_dist[3])/2;
         }
-        else
+        else//問題なければ old_dist に値を保存して、次回の測定に備える
         {
           old_dist[3] = old_dist[2];
           old_dist[2] = old_dist[1];
@@ -285,16 +304,18 @@ float sensor_read(void)
         //USBSerial.printf("%9.6f, %9.6f, %9.6f, %9.6f, %9.6f\r\n",Elapsed_time,Altitude/1000.0,  Altitude2, Alt_velocity,-(Accel_z_raw - Accel_z_offset)*9.81/(-Accel_z_offset));
       }
     }
-    else dcnt++;
+    else dcnt++;//dcnt を増加させて、次の測定タイミングを管理
 
+    //高度データをフィルタリングして更新
     Altitude = alt_filter.update((float)dist/1000.0, Interval_time);
 
     //Alt_control_ok = 1;
-    if(first_flag == 1) EstimatedAltitude.update(Altitude, Az, Interval_time);
-    else first_flag = 1;
-    Altitude2 = EstimatedAltitude.Altitude;
-    Alt_velocity = EstimatedAltitude.Velocity;
-    Az_bias = EstimatedAltitude.Bias;
+    if(first_flag == 1) EstimatedAltitude.update(Altitude, Az, Interval_time);//first_flag == 1 のとき、高度 (Altitude) と加速度 (Az) のデータをカルマンフィルタに入力
+    else first_flag = 1;//フラグを1にセットして次回起動するようにする
+    //推定された高度・垂直速度・加速度のバイアスを変数に格納
+    Altitude2 = EstimatedAltitude.Altitude;//ToFセンサーの値よりノイズが少なく、より正確な高さを得られる
+    Alt_velocity = EstimatedAltitude.Velocity;//高度の変化率（上昇・下降の速度）
+    Az_bias = EstimatedAltitude.Bias;//加速度センサの誤差（オフセット）を補正
     //USBSerial.printf("Sens=%f Az=%f Altitude=%f Velocity=%f Bias=%f\n\r",Altitude, Az, Altitude2, Alt_velocity, Az_bias);
 
     //float Roll_angle = Roll_angle;
@@ -314,22 +335,23 @@ float sensor_read(void)
   }
 
   //Accel fail safe
-  acc_norm = sqrt(Accel_x*Accel_x + Accel_y*Accel_y + Accel_z_d*Accel_z_d);
-  Acc_norm = acc_filter.update(acc_norm ,Control_period);
-  if (Acc_norm>2.0) 
+  acc_norm = sqrt(Accel_x*Accel_x + Accel_y*Accel_y + Accel_z_d*Accel_z_d);//加速度の大きさ（ベクトルのノルム）を計算.3軸の加速度を統合し、ドローンがどれくらい強く加速しているかを算出
+  Acc_norm = acc_filter.update(acc_norm ,Control_period);//加速度の値をフィルタリングし、ノイズを減らす.フィルタを適用して値を安定化することで より正確な過剰加速判定 ができる
+  if (Acc_norm>2.0)//フィルタ後の加速度が「2.0G」以上なら、過剰加速と判定 .「2.0G以上」は、ドローンの物理的な耐久性を考慮した制限値
   {
     OverG_flag = 1;
-    if (Over_g == 0.0)Over_g = acc_norm;
+    if (Over_g == 0.0)Over_g = acc_norm;//もし Over_g がまだ設定されていなければ、現在の acc_norm を保存
   }
 
-  //Battery voltage check 
-  Voltage = ina3221.getVoltage(INA3221_CH2);
-  filterd_v = voltage_filter.update(Voltage, Control_period);
+  //INA3221を使いバッテリー電圧を確認 
+  Voltage = ina3221.getVoltage(INA3221_CH2);//バッテリーの電圧を取得,値を格納
+  filterd_v = voltage_filter.update(Voltage, Control_period);//電圧のノイズ除去。電圧測定値には 一時的なノイズ や 急変動 が含まれるため、フィルタを適用して より正確な値 にする。
 
-  if(Under_voltage_flag != UNDER_VOLTAGE_COUNT){
-    if (filterd_v < POWER_LIMIT) Under_voltage_flag ++;
-    else Under_voltage_flag = 0;
-    if ( Under_voltage_flag > UNDER_VOLTAGE_COUNT) Under_voltage_flag = UNDER_VOLTAGE_COUNT;
+  if(Under_voltage_flag != UNDER_VOLTAGE_COUNT)//Under_voltage_flag は バッテリー低電圧を検知するフラグ
+  {
+    if (filterd_v < POWER_LIMIT) Under_voltage_flag ++;//filterd_v（フィルタ後の電圧）が POWER_LIMIT（定められた閾値）より低い場合 → 低電圧フラグを増加。バッテリー電圧が 一瞬だけ 低くなることがあるため、連続して閾値を超えた場合のみ低電圧と判断 する。
+    else Under_voltage_flag = 0;//filterd_v が POWER_LIMIT 以上なら → 低電圧フラグをリセット
+    if ( Under_voltage_flag > UNDER_VOLTAGE_COUNT) Under_voltage_flag = UNDER_VOLTAGE_COUNT;//Under_voltage_flag が UNDER_VOLTAGE_COUNT を超えた場合、最大値に制限（フラグが際限なく増えないようにする）。一定回数 POWER_LIMIT を下回ると、ドローンは低電圧警告を発する
   }
   /*
   if (opt_interval > 0.1)
@@ -340,10 +362,10 @@ float sensor_read(void)
   }
   */
 
-  uint32_t et =micros();
+  uint32_t et =micros();//現在の処理時間（マイクロ秒単位）を取得
   //USBSerial.printf("Sensor read %f %f %f\n\r", (mt-st)*1.0e-6, (et-mt)*1e-6, (et-st)*1.0e-6);
 
-  return (et-st)*1.0e-6;
+  return (et-st)*1.0e-6;//開始時間 (st) からの経過時間（マイクロ秒） を計算。1.0e-6 を掛けることで、秒単位（浮動小数点）に変換
 }
 
 
