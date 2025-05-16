@@ -253,66 +253,67 @@ void loop_400Hz(void)
   //割り込みにより400Hzで以降のコードが実行
   while(Loop_flag==0);  //タイマー割り込みによって Loop_flag == 1 になるまで待つ
   Loop_flag = 0;        //フラグが立ったらすぐ処理開始、再び 0 に戻して次の割り込み待機
-  
-  E_time = micros();
-  Old_Elapsed_time = Elapsed_time;
-  Elapsed_time = 1e-6*(E_time - S_time);
-  Interval_time = Elapsed_time - Old_Elapsed_time;
-  Timevalue+=0.0025f;
-  
-  //Read Sensor Value
-  sense_time = sensor_read();
-  uint32_t cs_time = micros();
 
-  //LED Drive
-  led_drive();
+  //時間の計測と経過時間の記録
+  E_time = micros();                                    //  現在のマイクロ秒（μs）単位の時刻を取得している
+  Old_Elapsed_time = Elapsed_time;　　　　　　　　　　　　//  前回の経過時間を保存
+  Elapsed_time = 1e-6*(E_time - S_time);                //  経過時間（秒単位）を計算   1e-6 をかけて 秒に変換しています
+  Interval_time = Elapsed_time - Old_Elapsed_time;      //  今回と前回の Elapsed_time の差を取ることで、**今回ループ内での経過時間（インターバル）**を計算
+  Timevalue+=0.0025f;                                   //  Timevalue を毎回 0.0025（秒）だけ加算しています
+  
+  //Read Sensor Value  センサーの値を読み取る処理
+  sense_time = sensor_read();      //sensor_read() 関数を呼び出して、何らかのセンサーからの値を取得
+  uint32_t cs_time = micros();    // micros() で現在の時刻（スケッチ開始からのマイクロ秒）を取得し、それを cs_time に格納。
+
+  //LED Drive  LEDの駆動（点灯・消灯・制御）を行う処理
+  led_drive();                    // led_drive() という関数を呼び出しています
   
   //Begin Mode select
-  if (Mode == INIT_MODE)
+  if (Mode == INIT_MODE)  // 現在のモードが INIT_MODE（初期化モード）であるかをチェックします
   {
-      motor_stop();
-      Elevator_center = 0.0f;
-      Aileron_center = 0.0f;
-      Rudder_center = 0.0f;
-      Roll_angle_offset = 0.0f;
+      motor_stop();                //  モーターを停止します
+      Elevator_center = 0.0f;       // 各舵面（エレベーター）のニュートラル（中立）位置をリセット
+      Aileron_center = 0.0f;        // 各舵面（エルロン、）のニュートラル（中立）位置をリセット
+      Rudder_center = 0.0f;         // 各舵面（ラダー）のニュートラル（中立）位置をリセット
+      Roll_angle_offset = 0.0f;     // ジャイロまたはIMUの各軸の角度オフセットをリセット
       Pitch_angle_offset = 0.0f;
       Yaw_angle_offset = 0.0f;
-      sensor_reset_offset();
-      Mode = AVERAGE_MODE;
+      sensor_reset_offset();        // センサーのバイアス（オフセット）をリセットする関数
+      Mode = AVERAGE_MODE;          // 初期化が終わったら、モードを AVERAGE_MODE に切り替える
       return;
   }
-  else if (Mode == AVERAGE_MODE)
+  else if (Mode == AVERAGE_MODE)    // 現在のモードが AVERAGE_MODE のときにのみ、以下の処理を行います
   {
-    motor_stop();
+    motor_stop();                    //モーターを停止します
     //Gyro offset Estimate
-    if (OffsetCounter < AVERAGENUM)
+    if (OffsetCounter < AVERAGENUM)  //オフセット平均処理を、一定回数（＝AVERAGENUM）繰り返すための条件分岐
     {
-      sensor_calc_offset_avarage();
-      OffsetCounter++;
+      sensor_calc_offset_avarage();  //センサーの現在値を読み、内部的に加算や平均計算
+      OffsetCounter++;               //オフセット平均処理を行った回数をカウントアップ
       return;
     }
     //Mode change
-    Mode = PARKING_MODE;
-    S_time = micros();
+    Mode = PARKING_MODE;             //センサーのオフセット（キャリブレーション）が完了したので、次のモード PARKING_MODE に遷移します
+    S_time = micros();               //現在の時刻を再記録
     return;
   }
-  else if( Mode == FLIGHT_MODE)
+  else if( Mode == FLIGHT_MODE)      //モードが FLIGHT_MODE（飛行モード、制御モード）のときに、機体の制御を開始します  
   {
-    Control_period = Interval_time;
+    Control_period = Interval_time; // 1ループ（1回の制御処理）の経過時間（秒）を記録
 
     //Judge Mode change
-    if (judge_mode_change() == 1) Mode = PARKING_MODE;
+    if (judge_mode_change() == 1) Mode = PARKING_MODE;  //飛行中に何らかの条件を検知して、モードを PARKING_MODE に強制的に戻す処理
     
     //Get command
-    get_command();
+    get_command(); //操縦者からの入力コマンドを取得
 
     //Angle Control
-    angle_control();
+    angle_control();// **姿勢制御（角度制御）**を行う関数
 
     //Rate Control
-    rate_control();
+    rate_control();// 角速度（ジャイロ）を制御する、いわゆる内側の制御ループ（インナーループ）
   }
-  else if(Mode == PARKING_MODE)
+  else if(Mode == PARKING_MODE) // judge_mode_change() によって、モードを切り替える判断をしています
   {
     //Judge Mode change
     if( judge_mode_change() == 1)Mode = FLIGHT_MODE;
