@@ -371,31 +371,39 @@ float sensor_read(void)
 
 #if 0
 
+//初期で仮距離を1mと仮定し宣言
 float range = 1.0f;
 
+//姿勢角の初期化
 float Roll_angle = 0.0f;
 float tht = 0.0f;
 float Yaw_angle = 0.0f;
+
+//角度からサインとコサインを求める.これは回転行列を作るために必要な値
 float sRoll_angle = sin(Roll_angle);
 float cRoll_angle = cos(Roll_angle);
 float stht = sin(tht);
 float ctht = cos(tht);
 float sYaw_angle = sin(Yaw_angle);
-float sYaw_angle = cos(Yaw_angle);
+float sYaw_angle = cos(Yaw_angle);//多分うちミス？でsYawになっている。もしかしたらエラーが起きる可能性もある部分
 
-float r11 =  ctht*cYaw_angle;
-float r12 =  sRoll_angle*stht*cYaw_angle - cRoll_angle*sYaw_angle;
+//回転行列の構成(1行目:x軸)
+float r11 =  ctht*cYaw_angle;                                          //r11 → ピッチとヨーの影響を考慮した X軸の変換
+float r12 =  sRoll_angle*stht*cYaw_angle - cRoll_angle*sYaw_angle;     //r12, r13 → ロールの影響を加味した変換
 float r13 =  cRoll_angle*stht*cYaw_angle + sRoll_angle*sYaw_angle;
 
+//回転行列の構成(2行目:y軸)
 float r21 =  ctht*sYaw_angle;
 float r22 =  sRoll_angle*stht*sYaw_angle + cRoll_angle*cYaw_angle;
 float r23 =  cRoll_angle*stht*sYaw_angle - sRoll_angle*cYaw_angle;
 
+//回転行列の構成(3行目:z軸)
 float r31 = -stht;
 float r32 =  sRoll_angle*ctht;
 float r33 =  cRoll_angle*ctht;
 
-float x = r13*range;
-float y = r23*range;
-float z = r33*range;
+//回転後の座標計算
+float x = r13*range;//元の座標系で表された range の位置を、回転後の座標系での x 座標に変換
+float y = r23*range;//元の座標系での range の位置を、回転後の座標系での y 座標に変換
+float z = r33*range;//元の座標系での range の位置を、回転後の座標系での z 座標に変換
 #endif
