@@ -15,9 +15,13 @@ Espressifが開発した、Wi-Fiの規格を利用した、アクセスポイン
 #include <esp_wifi.h>
 
 
+// ========================
+//  グローバル変数の定義
+// ========================
+
 //esp_now_peer_info_t slave;
 
-volatile uint16_t Connect_flag = 0;
+volatile uint16_t Connect_flag = 0;   // 接続フラグ（通信が成立しているかを確認）
 
 //Telemetry相手のMAC ADDRESS 4C:75:25:AD:B6:6C
 //ATOM Lite (C): 4C:75:25:AE:27:FC
@@ -25,84 +29,124 @@ volatile uint16_t Connect_flag = 0;
 //4C:75:25:AF:4E:84
 //4C:75:25:AD:8B:20
 //4C:75:25:AD:8B:20 赤水玉テープ　ATOM lite
-uint8_t TelemAddr[6] = {0x4C, 0x75, 0x25, 0xAD, 0x8B, 0x20};
-//uint8_t TelemAddr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+uint8_t TelemAddr[6] = {0x4C, 0x75, 0x25, 0xAD, 0x8B, 0x20};  // Telemetry（相手側のESP32）のMACアドレス（データを送受信する対象）
+//uint8_t TelemAddr[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 通信テスト時に使用可能な**ブロードキャストアドレス**
+
+// **自身のESP32のMACアドレス**
 volatile uint8_t MyMacAddr[6];
-volatile uint8_t Rc_err_flag=0;
-esp_now_peer_info_t peerInfo;
+volatile uint8_t Rc_err_flag=0;   // 受信エラーフラグ 
+esp_now_peer_info_t peerInfo;  // 接続する相手のMACアドレス、通信チャンネル、暗号化設定などを保持。
 
 //RC
+
+// **RCスティックの状態を格納する配列**
+// 配列の各要素には、RCコントローラーの各軸（スティックの動き）に対応するデータが格納される。
+// - Stick[RUDDER]   → ラダー（左右方向の回転）
+// - Stick[THROTTLE] → スロットル（上下移動）
+// - Stick[AILERON]  → エルロン（左右移動）
+// - Stick[ELEVATOR] → エレベーター（前後移動）
+// - Stick[BUTTON_ARM] → アームボタン（飛行開始）
+// - Stick[BUTTON_FLIP] → フリップボタン（宙返り）
 volatile float Stick[16];
+// **受信データの送信元MACアドレス**
 volatile uint8_t Recv_MAC[3];
 
 // 受信コールバック
+// ESP-NOW でデータを受信した際に自動的に呼び出される関数。
+// 受信データを解析し、RCコントローラーのスティック情報に反映する。
 void OnDataRecv(const uint8_t *mac_addr, const uint8_t *recv_data, int data_len) 
 {
+  // **通信が継続中であることを示すフラグをリセット**
+  // データを受信するごとに `Connect_flag` をリセットすることで、
+  // 通信が途切れていないことを確認する。
   Connect_flag=0;
 
-  uint8_t* d_int;
+  uint8_t* d_int;　  // **データ変換用のポインタ**
   //int16_t d_short;
-  float d_float;
+  float d_float;  // **受信データを格納する変数**
 
+  // **送信元のMACアドレスの一部を取得**
+  // 受信データの先頭3バイトに送信元のMACアドレスが格納されている
   Recv_MAC[0]=recv_data[0];
   Recv_MAC[1]=recv_data[1];
   Recv_MAC[2]=recv_data[2];
 
+  // **受信したデータが自身のESP32向けの通信か確認**
+  // 受信データに含まれるMACアドレスの一部（下位3バイト）が
+  // 自身のMACアドレス（下位3バイト）と一致しているかチェックする。
   if ((recv_data[0]==MyMacAddr[3])&&(recv_data[1]==MyMacAddr[4])&&(recv_data[2]==MyMacAddr[5]))
   {
-    Rc_err_flag = 0;
+    Rc_err_flag = 0;  // 正常なデータならエラーを解除
   }
   else 
   {
-    Rc_err_flag = 1;
+    Rc_err_flag = 1;  // 異なる送信元からのデータならエラーを設定し処理を中断
     return;
   }
-  
+
+  //**受信データを変換してスティックの状態を更新**
+  // 各操作軸（ラダー、スロットル、エルロン、エレベーター）の値を取得する。
+
+  // `d_int`ポインタを用いて `float` 型のデータを変換する
   d_int = (uint8_t*)&d_float;  
+   // **ラダー（方向転換）**
   d_int[0] = recv_data[3];
   d_int[1] = recv_data[4];
   d_int[2] = recv_data[5];
   d_int[3] = recv_data[6];
   Stick[RUDDER]=d_float;
 
+   // **スロットル（上昇・下降）**
   d_int[0] = recv_data[7];
   d_int[1] = recv_data[8];
   d_int[2] = recv_data[9];
   d_int[3] = recv_data[10];
   Stick[THROTTLE]=d_float;
 
+  // **エルロン（左右移動）**
   d_int[0] = recv_data[11];
   d_int[1] = recv_data[12];
   d_int[2] = recv_data[13];
   d_int[3] = recv_data[14];
   Stick[AILERON]  = d_float;
 
+  // **エレベーター（前後移動）**
   d_int[0] = recv_data[15];
   d_int[1] = recv_data[16];
   d_int[2] = recv_data[17];
   d_int[3] = recv_data[18];
   Stick[ELEVATOR]  = d_float;
 
-  Stick[BUTTON_ARM] = recv_data[19];
-  Stick[BUTTON_FLIP] = recv_data[20];
-  Stick[CONTROLMODE] = recv_data[21];
-  Stick[ALTCONTROLMODE] = recv_data[22];
-  
+    // **各種ボタンの状態を取得**
+  // これらはフリップやアームの操作を担当する。
+  Stick[BUTTON_ARM] = recv_data[19];  // アームボタン（飛行開始）
+  Stick[BUTTON_FLIP] = recv_data[20];  // フリップボタン（宙返り）
+  Stick[CONTROLMODE] = recv_data[21];   // 操作モード（手動・自動切り替え）
+  Stick[ALTCONTROLMODE] = recv_data[22];  // 高度制御モード（高度を固定するかどうか）
+
+  // **ログを初期化**
   Stick[LOG] = 0.0;
   
+// =====================================================
+// データ受信のデバッグ出力（現在コメントアウトされている）
+// =====================================================
 
+// `#if 0` のため、このコードブロックは **コンパイル時に無効** になっている。
+// `#if 1` に変更すると、USBシリアルモニタに受信データが表示される。
+// `printf()` を使って、RCスティックの各軸の値を出力する。
+// これにより、ESP-NOWで受信したスティックデータの確認が可能になる。
 
 #if 0
   USBSerial.printf("%6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f %6.3f  %6.3f\n\r", 
-                                            Stick[THROTTLE],
-                                            Stick[AILERON],
-                                            Stick[ELEVATOR],
-                                            Stick[RUDDER],
-                                            Stick[BUTTON_ARM],
-                                            Stick[BUTTON_FLIP],
-                                            Stick[CONTROLMODE],
-                                            Stick[ALTCONTROLMODE],
-                                            Stick[LOG]);
+                                            Stick[THROTTLE],   // スロットル（上下移動）
+                                            Stick[AILERON],  // エルロン（左右移動）
+                                            Stick[ELEVATOR],  // エレベーター（前後移動）
+                                            Stick[RUDDER],  // ラダー（方向転換）
+                                            Stick[BUTTON_ARM],  // アームボタン（飛行開始）
+                                            Stick[BUTTON_FLIP],   // フリップボタン（宙返り）
+                                            Stick[CONTROLMODE],  // 操作モード（手動・自動切り替え）
+                                            Stick[ALTCONTROLMODE],  // 高度制御モード（高度を固定するか）
+                                            Stick[LOG]);            // ログ情報（使用されていない場合は0）
 #endif
 }
 
