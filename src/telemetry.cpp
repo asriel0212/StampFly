@@ -68,7 +68,7 @@ void telemetry_sequence(void)
   {
     case 1:
       make_telemetry_data(senddata);
-      //Send !  <-　頭悪い。何も送っていない
+      //Send !  <-　この下の分岐の中で送信している
       if(telemetry_send(senddata, sizeof(senddata))==1)esp_led(0x110000, 1);//Telemetory Reciver OFF  <-　真偽不明。とりあえずledの値を変えている
       else esp_led(0x001100, 1);//Telemetory Reciver ON <-　真偽不明。とりあえずledの値を変えている
 
@@ -182,7 +182,7 @@ void telemetry_sequence400(void)
   uint8_t senddata[MAXINDEX]; 
 
   make_telemetry_data400(senddata);
-  //Send !  <-　頭悪い。何も送っていない
+  //Send !  <-　この下の分岐の中で送信されている
   if(telemetry_send(senddata, MININDEX)==1)esp_led(0x110000, 1);//Telemetory Reciver OFF
   else esp_led(0x001100, 1);//Telemetory Reciver ON
 }
