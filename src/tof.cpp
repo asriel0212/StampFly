@@ -107,7 +107,10 @@ void tof_init(void)//tofの初期設定
   USBSerial.printf("#2 RdWord Status:%d\n\r", VL53LX_RdWord(ToF_front, 0x010F, &wordData));
   USBSerial.printf("#2 VL53LX: %04X\n\r", wordData);
 
-  attachInterrupt(INT_BOTTOM, &tof_int, FALLING);//
+  /*INT_BOTTOM ピン（割り込みピン）を監視するよう設定。
+    ピンの状態が HIGH → LOW に変化（FALLINGエッジ）のとき、自動的に tof_int() 関数を呼び出す。
+  */
+  attachInterrupt(INT_BOTTOM, &tof_int, FALLING);
 
   VL53LX_ClearInterruptAndStartMeasurement(ToF_bottom);//
   delay(100);
