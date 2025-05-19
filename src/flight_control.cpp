@@ -316,53 +316,54 @@ void loop_400Hz(void)
   else if(Mode == PARKING_MODE) // judge_mode_change() によって、モードを切り替える判断をしています
   {
     //Judge Mode change
-    if( judge_mode_change() == 1)Mode = FLIGHT_MODE;
+    if( judge_mode_change() == 1)Mode = FLIGHT_MODE;　　//モード変更の判定を行う関数で、戻り値が1なら、モードを FLIGHT_MODE に遷移
     
-    //Parking
+    //Parking　　着陸後の状態
     motor_stop();
-    OverG_flag = 0;
-    Angle_control_flag = 0;
-    Thrust0 = 0.0;
-    Alt_flag = 0;
-    Alt_ref = Alt_ref_min;
-    Stick_return_flag = 0;
-    Throttle_control_mode = 0;
-    Thrust_filtered.reset();
+    OverG_flag = 0;             // 過去に過負荷が検出されていた場合、そのフラグをリセット
+    Angle_control_flag = 0;    //  角度制御のフラグ
+    Thrust0 = 0.0;              // 出力するスロットル推力値
+    Alt_flag = 0;               // 高度制御用のフラグ
+    Alt_ref = Alt_ref_min;      // Alt_ref：目標高度（Reference Altitude） min:最小高度
+    Stick_return_flag = 0;      // 操縦スティックが中央に戻ってきたかどうかのフラグ
+    Throttle_control_mode = 0;  // スロットル制御モードの設定
+    Thrust_filtered.reset();     //フィルタの内部状態（履歴など）を初期化( スムーズな再始動のためにフィルタリング処理の履歴をクリア)
   }
 
   //// Telemetry
-  //telemetry400();
+  //telemetry400();         テレメトリ（telemetry）とは、センサやシステム状態のデータを無線や通信回線を使って外部（地上局など）に送信する仕組み
   //telemetry();
 
-  uint32_t ce_time = micros();
-  Dt_time = ce_time - cs_time;  
+  uint32_t ce_time = micros();      //実行時間を測定
+  Dt_time = ce_time - cs_time;     // ループ処理の終了時に、ループの所要時間（Δt）をマイクロ秒単位で測定して、Dt_time に格納しています
   //End of Loop_400Hz function
 }
 
+//ドローンやロボットの「アーミング（起動）・ディスアーミング（停止）」状態の切り替えを判定する処理
 uint8_t judge_mode_change(void)
 {
   //Ariming Button が押されて離されたかを確認
   uint8_t state;
   state = 0;
-  if(LockMode == 0)
+  if(LockMode == 0)              //  LockMode == 0：ボタンがまだ押されていない状態
   {
-    if( get_arming_button()==1)
+    if( get_arming_button()==1)   // get_arming_button() == 1：ボタンが押されたら→ LockMode を 1 にセット
     {
       LockMode = 1;
     }
   }
   else
   {
-    if( get_arming_button()==0)
+    if( get_arming_button()==0)   //ボタンが離されたらlockmode=0に戻し、state=1にして離されたことを通知
     {
       LockMode = 0;
       state = 1;
     }
   }
-  return state;
+  return state;        
 }
 
-///////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////// PID制御器のゲイン設定方法について丁寧に記述されたドキュメントコメント
 //  PID control gain setting
 //
 //  Sets the gain of PID control.
@@ -380,55 +381,60 @@ uint8_t judge_mode_change(void)
 //  Example
 //  Set roll rate control PID gain
 //  p_pid.set_parameter(2.5, 10.0, 0.45, 0.01, 0.001); 
+//
+//PGAIN 比例ゲイン（P）　　　IGAIN 積分ゲイン（I）　　DGAIN 微分ゲイン(D)
+//TC 微分制御用フィルタの時定数　　　　STEP 制御周期
+//
 
+//飛行制御システムの初期化処理の一部
 void control_init(void)
 {
-  //Rate control
+  //Rate control  姿勢レート制御
   p_pid.set_parameter(Roll_rate_kp, Roll_rate_ti, Roll_rate_td, Roll_rate_eta, Control_period);//Roll rate control gain
   q_pid.set_parameter(Pitch_rate_kp, Pitch_rate_ti, Pitch_rate_td, Pitch_rate_eta, Control_period);//Pitch rate control gain
   r_pid.set_parameter(Yaw_rate_kp, Yaw_rate_ti, Yaw_rate_td, Yaw_rate_eta, Control_period);//Yaw rate control gain
 
-  //Angle control
+  //Angle control  姿勢角度制御
   phi_pid.set_parameter  (Rall_angle_kp, Rall_angle_ti, Rall_angle_td, Rall_angle_eta, Control_period);//Roll angle control gain
   theta_pid.set_parameter(Pitch_angle_kp, Pitch_angle_ti, Pitch_angle_td, Pitch_angle_eta, Control_period);//Pitch angle control gain
 
-  //Altitude control
-  alt_pid.set_parameter(alt_kp, alt_ti, alt_td, alt_eta, alt_period);
-  z_dot_pid.set_parameter(z_dot_kp, z_dot_ti, z_dot_td, alt_eta, alt_period);
+  //Altitude control  高度制御
+  alt_pid.set_parameter(alt_kp, alt_ti, alt_td, alt_eta, alt_period);           // Altitude control (位置)
+  z_dot_pid.set_parameter(z_dot_kp, z_dot_ti, z_dot_td, alt_eta, alt_period);   // 垂直速度制御（z方向の速度）
 
-  Duty_fl.set_parameter(0.003, Control_period);
-  Duty_fr.set_parameter(0.003, Control_period);
-  Duty_rl.set_parameter(0.003, Control_period);
-  Duty_rr.set_parameter(0.003, Control_period);
-
+  Duty_fl.set_parameter(0.003, Control_period);  // Duty_fl = front-left motor
+  Duty_fr.set_parameter(0.003, Control_period);  // Duty_fr = front-right motor
+  Duty_rl.set_parameter(0.003, Control_period);  // Duty_rl = rear-left motor
+  Duty_rr.set_parameter(0.003, Control_period);  // Duty_rr = rear-right motor
+ 
 }
 ///////////////////////////////////////////////////////////////////
 
-void get_command(void)
+void get_command(void)   //送信機（またはスティック入力）からのコマンドを読み取って、飛行制御に使うスロットル（推力）や制御モードの指令値を計算
 {
-  static uint16_t stick_count;
-  float th,thlo;
-  float throttle_limit = 0.7;
+  static uint16_t stick_count;   //stick_count：おそらくスティック操作の連続検出に使われるカウンタ（未使用）
+  float th,thlo;                 //thlo：スティックの生入力（スロットル）   th：推力に変換された値（補正後）
+  float throttle_limit = 0.7;    //throttle_limit：スロットルの上限スケーリング値（0.7 = 実際の70%まで有効）
 
-  Control_mode = Stick[CONTROLMODE];
-  if ( (uint8_t)Stick[ALTCONTROLMODE] == 5)Throttle_control_mode = 0;
-  else if((uint8_t)Stick[ALTCONTROLMODE] == 4)Throttle_control_mode = 1;
+  Control_mode = Stick[CONTROLMODE]; //  Stick[] はおそらくスティック入力配列    CONTROLMODE はインデックス定義
+  if ( (uint8_t)Stick[ALTCONTROLMODE] == 5)Throttle_control_mode = 0;    // 5 → マニュアルスロットル（Throttle_control_mode = 0）
+  else if((uint8_t)Stick[ALTCONTROLMODE] == 4)Throttle_control_mode = 1;　//4もしかしたら高度制御ON
   else Throttle_control_mode = 0;
 
   //Thrust control
-  thlo = Stick[THROTTLE];
-  thlo = thlo/throttle_limit;
+  thlo = Stick[THROTTLE];　　　　　//　スティックのスロットル入力を取得（通常 0.0～1.0）
+  thlo = thlo/throttle_limit;　　　//　それを throttle_limit = 0.7 で割って スケーリング（≒範囲を拡張）→ 最大スロットル操作が「1.0」になるように調整
 
-  if (Throttle_control_mode == 0)
+  if (Throttle_control_mode == 0)   //スロットル入力の範囲チェックと安全処理
   {
-    //Manual
-    if(thlo<0.0)thlo = 0.0;
-    if ( (0.2 > thlo) && (thlo > -0.2) )thlo = 0.0f ;//不感帯
-    if (thlo>1.0f) thlo = 1.0f;
+    //Manual  
+    if(thlo<0.0)thlo = 0.0;    // 負の入力は0に（スロットルは本来正値）
+    if ( (0.2 > thlo) && (thlo > -0.2) )thlo = 0.0f ;//不感帯  0.2未満の微小入力はデッドバンドとして無視（不感帯）
+    if (thlo>1.0f) thlo = 1.0f;          // スロットルが1.0超えた場合の制限（オーバークリップ防止）
     if (thlo<-1.0f) thlo =0.0f;
-    //Throttle curve conversion　スロットルカーブ補正
-    th = (2.97f*thlo-4.94f*thlo*thlo+2.86f*thlo*thlo*thlo)*BATTERY_VOLTAGE;
-    Thrust_command = Thrust_filtered.update(th, Interval_time);
+    //Throttle curve conversion//　スロットルカーブ補正   スロットルカーブ補正を三次関数で行っている
+    th = (2.97f*thlo-4.94f*thlo*thlo+2.86f*thlo*thlo*thlo)*BATTERY_VOLTAGE;   //モーター・プロペラ特性が非線形なので、スティック入力に対して推力が線形になるように補正。
+    Thrust_command = Thrust_filtered.update(th, Interval_time); // Thrust_filtered：推力に対するローパスフィルタクラス   .update(th, dt)：フィルタ処理後の値を返す
   }
   else if (Throttle_control_mode == 1)
   {
@@ -436,25 +442,25 @@ void get_command(void)
     if(Alt_flag==0)
     {
       stick_count = 0;
-      //Manual目標高度まではマニュアルで上げる
+      //Manual目標高度まではマニュアルで上げる   スロットル入力の範囲チェックと不感帯処理（マニュアルと同じ）
       if(thlo<0.0)thlo = 0.0;
-      if ( (0.2 > thlo) && (thlo > -0.2) )thlo = 0.0f ;
+      if ( (0.2 > thlo) && (thlo > -0.2) )thlo = 0.0f ;   // 不感帯
       if (thlo>1.0f) thlo = 1.0f;
       if (thlo<-1.0f) thlo =0.0f;
-      th = (2.97f*thlo-4.94f*thlo*thlo+2.86f*thlo*thlo*thlo)*BATTERY_VOLTAGE;
-      Thrust_command = Thrust_filtered.update(th, Interval_time);
+      th = (2.97f*thlo-4.94f*thlo*thlo+2.86f*thlo*thlo*thlo)*BATTERY_VOLTAGE;  // 三次スロットルカーブによる非線形補正＋バッテリ電圧を掛けて推力に変換
+      Thrust_command = Thrust_filtered.update(th, Interval_time);               //ローパスフィルタで滑らかに
       
-      if (Altitude2 < Alt_ref) 
+      if (Altitude2 < Alt_ref)                       // Altitude2 は現在の高度
       {
-        Thrust0 = Thrust_command / BATTERY_VOLTAGE;
+        Thrust0 = Thrust_command / BATTERY_VOLTAGE;   //  Alt_ref（目標高度）に到達していなければ、その時のスロットルを Thrust0 に保存
         alt_pid.reset();
         z_dot_pid.reset();
       }
-      else Alt_flag = 1; 
+      else Alt_flag = 1;                             //  高度到達後は Alt_flag = 1 にして自動高度制御に移行
     }
     else
     {
-      if(Stick_return_flag == 0)
+      if(Stick_return_flag == 0)   // スティックが中立（±0.2）で200回以上（ループ周期×200回）継続されたら、Stick_return_flag = 1 にする
       {
         if ( (-0.2 < thlo) && (thlo < 0.2) )
         {
@@ -465,39 +471,42 @@ void get_command(void)
       }
       else
       {
-        if ( (-0.2 < thlo) && (thlo < 0.2) )thlo = 0.0f ;//不感帯
-        Alt_ref = Alt_ref + thlo*0.001;
-        if(Alt_ref<0.05)Alt_ref=0.05;
+        if ( (-0.2 < thlo) && (thlo < 0.2) )thlo = 0.0f ;//不感帯      
+        Alt_ref = Alt_ref + thlo*0.001;            //   Alt_ref（目標高度  たとえば thlo = 1.0 で上昇速度 +0.001 m/周期（約1m/秒想定）
+        if(Alt_ref<0.05)Alt_ref=0.05;               //    最低高度制限あり（Alt_ref ≥ 0.05m）
       }
     } 
   }
 
-  Roll_angle_command = 0.4*Stick[AILERON];
-  if (Roll_angle_command<-1.0f)Roll_angle_command = -1.0f;
-  if (Roll_angle_command> 1.0f)Roll_angle_command =  1.0f;  
-  Pitch_angle_command = 0.4*Stick[ELEVATOR];
+  //スティック入力（送信機操作）から角度や角速度のコマンドを計算する処理
+  //係数 0.4：最大角度を ±0.4 rad（約23°）に制限している
+  Roll_angle_command = 0.4*Stick[AILERON];         //Stick[AILERON]：ロール操作（左右チルト）
+  if (Roll_angle_command<-1.0f)Roll_angle_command = -1.0f;          //この二つの値は ±0.4 rad に制限されているので、±1.0 にクリップしても通常はかからない
+  if (Roll_angle_command> 1.0f)Roll_angle_command =  1.0f;          //将来的にスケーリングを変更したときに備えた安全処理と推測
+  Pitch_angle_command = 0.4*Stick[ELEVATOR];       //Stick[ELEVATOR]：ピッチ操作（前後チルト）
   if (Pitch_angle_command<-1.0f)Pitch_angle_command = -1.0f;
   if (Pitch_angle_command> 1.0f)Pitch_angle_command =  1.0f;  
 
-  Yaw_angle_command = Stick[RUDDER];
-  if (Yaw_angle_command<-1.0f)Yaw_angle_command = -1.0f;
+  Yaw_angle_command = Stick[RUDDER];　　　　　　　　//Stick[RUDDER]：ラダー操作（左右旋回）
+  if (Yaw_angle_command<-1.0f)Yaw_angle_command = -1.0f;      //Yaw_angle_command は [-1, 1] 範囲
   if (Yaw_angle_command> 1.0f)Yaw_angle_command =  1.0f;  
   //Yaw control
-  Yaw_rate_reference   = 2.0f * PI * (Yaw_angle_command - Rudder_center);
+  Yaw_rate_reference   = 2.0f * PI * (Yaw_angle_command - Rudder_center);     //Yaw_rate_reference はヨー角速度の指令（単位：rad/s）
 
-  if (Control_mode == RATECONTROL)
+  if (Control_mode == RATECONTROL)      //RATECONTROL：角速度制御モード（スティックで直接回転速度を指定）
   {
-    Roll_rate_reference = 240*PI/180*Roll_angle_command;
+    Roll_rate_reference = 240*PI/180*Roll_angle_command;       // 約 4.188 rad/s（最大角速度）
     Pitch_rate_reference = 240*PI/180*Pitch_angle_command;
   }
 
-  // flip button check
+  // flip button check            （宙返り）ボタン検出
   if (Flip_flag == 0 && Throttle_control_mode == 0)
   {
-    Flip_flag = get_flip_button();
+    Flip_flag = get_flip_button();   //get_flip_button() は宙返り操作をトリガーする入力
   }
 }
 
+//角速度制御（レート制御）と高度速度制御を行うメインの制御ルーチン
 void rate_control(void)
 {
   float p_rate, q_rate, r_rate;
@@ -505,37 +514,37 @@ void rate_control(void)
   float p_err, q_err, r_err, z_dot_err;
 
   //Control main
-  if(rc_isconnected())
-  {
-    if(Thrust_command/BATTERY_VOLTAGE < Motor_on_duty_threshold)
+  if(rc_isconnected())           //rc_isconnected()：送信機（RC）が接続されているかチェック
+  {                              //Thrust_command は物理的な推力値（単位：ニュートン相当） / 電圧 = duty比（PWM制御用）
+    if(Thrust_command/BATTERY_VOLTAGE < Motor_on_duty_threshold)     //電圧でスケーリングした実際の出力（Duty比）を計算
     { 
-      reset_rate_control();
+      reset_rate_control();          //これが小さい（≒モーター停止）場合、制御系（PID等）をリセット
     }
     else
     {
-      //Control angle velocity
+      //Control angle velocity　　　　　　角速度を制御　　　現在のセンサ（ジャイロ）からの角速度値を取得
       p_rate = Roll_rate;
       q_rate = Pitch_rate;
       r_rate = Yaw_rate;
 
-      //Get reference
+      //Get reference　　　　　　　　　　　状態取得と目標取得　　スティック入力や角度制御PIDから計算された目標角速度（*_rate_reference）を取得　
       p_ref = Roll_rate_reference;
       q_ref = Pitch_rate_reference;
       r_ref = Yaw_rate_reference;
 
-      //Error
+      //Error　　　　　　　　　　　　　　　　 誤差計算　　　　誤差（= 指令値 - 実測値）を算出
       p_err = p_ref - p_rate;
       q_err = q_ref - q_rate;
       r_err = r_ref - r_rate;
-      z_dot_err = Z_dot_ref - Alt_velocity;
-      
-      //Rate Control PID
+      z_dot_err = Z_dot_ref - Alt_velocity;　　 //z_dot_err は高度速度制御用の誤差　　　Z_dot_ref：目標上昇速度　　　Alt_velocity：現在の上昇・下降速度
+      　
+      //Rate Control PID                 PID制御器による出力計算（姿勢制御）
       Roll_rate_command = p_pid.update(p_err, Interval_time);
       Pitch_rate_command = q_pid.update(q_err, Interval_time);
       Yaw_rate_command = r_pid.update(r_err, Interval_time);
-      if (Alt_flag == 1)
+      if (Alt_flag == 1)          // 高度制御（高度保持モードがONのとき）
       {
-        Thrust_command = (Thrust0 + z_dot_pid.update(z_dot_err, Interval_time))*BATTERY_VOLTAGE;
+        Thrust_command = (Thrust0 + z_dot_pid.update(z_dot_err, Interval_time))*BATTERY_VOLTAGE;    //電圧スケーリング（物理推力に変換）
       }
 
       //Motor Control
