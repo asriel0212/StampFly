@@ -548,15 +548,17 @@ void rate_control(void)
       }
 
       //Motor Control
-      //正規化Duty
-      FrontRight_motor_duty = Duty_fr.update((Thrust_command +(-Roll_rate_command +Pitch_rate_command +Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);
-      FrontLeft_motor_duty  = Duty_fl.update((Thrust_command +( Roll_rate_command +Pitch_rate_command -Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);
-      RearRight_motor_duty  = Duty_rr.update((Thrust_command +(-Roll_rate_command -Pitch_rate_command -Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);
+      //正規化Duty     4つのモーター（前右・前左・後右・後左）それぞれに個別のPWM（duty）を割り当てています。
+      FrontRight_motor_duty = Duty_fr.update((Thrust_command +(-Roll_rate_command +Pitch_rate_command +Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);   // Thrust_command：全体の浮力（推力）。すべてのモーターに均等に加算。
+      FrontLeft_motor_duty  = Duty_fl.update((Thrust_command +( Roll_rate_command +Pitch_rate_command -Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);   //Roll_rate_command, Pitch_rate_command, Yaw_rate_command：姿勢制御用の角速度指令。
+      RearRight_motor_duty  = Duty_rr.update((Thrust_command +(-Roll_rate_command -Pitch_rate_command -Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);   //バッテリー電圧によりモーター出力は変わるため、入力値を電圧で割って正規化しています。
       RearLeft_motor_duty   = Duty_rl.update((Thrust_command +( Roll_rate_command -Pitch_rate_command +Yaw_rate_command)*0.25f)/BATTERY_VOLTAGE, Interval_time);
-    
-      const float minimum_duty=0.0f;
-      const float maximum_duty=0.95f;
 
+      //Duty比の制限（ハード保護）
+      const float minimum_duty=0.0f;   //Duty比（PWM出力）は0.0〜1.0の範囲が基本
+      const float maximum_duty=0.95f;  //ここでは安全のため 最大0.95 に制限
+
+      //クリッピング処理（saturation）
       if (FrontRight_motor_duty < minimum_duty) FrontRight_motor_duty = minimum_duty;
       if (FrontRight_motor_duty > maximum_duty) FrontRight_motor_duty = maximum_duty;
 
@@ -569,119 +571,130 @@ void rate_control(void)
       if (RearLeft_motor_duty < minimum_duty) RearLeft_motor_duty = minimum_duty;
       if (RearLeft_motor_duty > maximum_duty) RearLeft_motor_duty = maximum_duty;
 
-      //Duty set
+      //Duty set    ここで各モーターにDuty比をPWMとして出力
       if (OverG_flag==0){
-        set_duty_fr(FrontRight_motor_duty);
-        set_duty_fl(FrontLeft_motor_duty);
+        set_duty_fr(FrontRight_motor_duty);      //直前で計算・制限された *_motor_duty の値を set_duty_*() 関数に渡して、ハード（ESC）に送信。
+        set_duty_fl(FrontLeft_motor_duty);       //set_duty_*() の中では、実際には ledcWrite() を使って PWM 信号を送っています。
         set_duty_rr(RearRight_motor_duty);
         set_duty_rl(RearLeft_motor_duty);      
       }
       else 
-      {
+      {           // 異常：モーター停止、安全モードへ
+        //Over G（過加速度）：ドローンが急加速・激突・落下などにより、加速度センサが規定値を超えた状態。
         FrontRight_motor_duty = 0.0;
-        FrontLeft_motor_duty = 0.0;
+        FrontLeft_motor_duty = 0.0; //全Dutyを0にリセット（安全性重視）
         RearRight_motor_duty = 0.0;
         RearLeft_motor_duty = 0.0;
-        motor_stop();
-        OverG_flag=0;
-        Mode = PARKING_MODE;
+        motor_stop();    //motor_stop() を呼び出して、PWMをハードウェアレベルで停止
+        OverG_flag=0;    //OverG_flag をリセット（次回の判定のため）
+        Mode = PARKING_MODE;   //Mode = PARKING_MODE; → 駐機モードに移行（動作待機）
       }
     }
   }
   else
   {
-    reset_rate_control();
+    reset_rate_control();    //角速度制御（Rate Control）をリセットします。
   }
 }
 
 void reset_rate_control(void)
 {
-    motor_stop();
-    FrontRight_motor_duty = 0.0;
+    motor_stop();      //motor_stop() は各PWM信号を0に設定
+    FrontRight_motor_duty = 0.0;    //明示的にDuty変数もゼロ化して、後で再始動したときに誤った出力が出ないようにしている
     FrontLeft_motor_duty = 0.0;
     RearRight_motor_duty = 0.0;
     RearLeft_motor_duty = 0.0;
-    Duty_fr.reset();
+   // Duty制御器（各モーター制御のフィルタ）をリセット
+    Duty_fr.reset();   // //Duty比のフィルタ処理 or 1次遅れモデルのクラスインスタンス
     Duty_fl.reset();
     Duty_rr.reset();
     Duty_rl.reset();
-    p_pid.reset();
-    q_pid.reset();
-    r_pid.reset();
-    alt_pid.reset();
-    z_dot_pid.reset();
+    // 角速度制御PIDリセット
+    p_pid.reset();     //Roll角速度制御
+    q_pid.reset();     //Pitch角速度制御
+    r_pid.reset();     //Yaw角速度制御
+    // 高度制御PIDリセット
+    alt_pid.reset();   //高度（Z軸位置）制御
+    z_dot_pid.reset(); //垂直速度（Z軸速度）制御
+    // 姿勢制御目標値リセット（機体静止を目指す）
     Roll_rate_reference = 0.0f;
-    Pitch_rate_reference = 0.0f;
+    Pitch_rate_reference = 0.0f;  //PIDの出力である角速度の目標値をゼロにして、制御目標を「その場で静止」にする
     Yaw_rate_reference = 0.0f;
-    Rudder_center   = Yaw_angle_command;
-    //angle control value reset
+    // ラダーのセンター位置更新
+    Rudder_center   = Yaw_angle_command;   //現在のYaw角を「基準の中心」として保持
+    //angle control value reset     Roll/Pitch角度制御PIDのリセットと初期エラー設定
     Roll_rate_reference=0.0f;
     Pitch_rate_reference=0.0f;
-    phi_pid.reset();
+    phi_pid.reset();     //phi_pid, theta_pid：角度制御用PID（Roll・Pitch）
     theta_pid.reset();
-    phi_pid.set_error(Roll_angle_reference);
+    phi_pid.set_error(Roll_angle_reference);     //初期化後に set_error() で制御器の初期誤差を設定しておく
     theta_pid.set_error(Pitch_angle_reference);
-    Flip_flag = 0;
+    // フリップ動作のリセット
+    Flip_flag = 0;      //フリップ操作（宙返り）の制御フラグとカウンタをリセット
     Flip_counter = 0;
-    Roll_angle_offset   = 0;
+    // 姿勢オフセット初期化
+    Roll_angle_offset   = 0;     //機体の傾きを一時的に補正していた場合などのオフセット値をリセット
     Pitch_angle_offset = 0;
 }
 
-void reset_angle_control(void)
+void reset_angle_control(void)    //角度制御系のリセット処理
 {
-    Roll_rate_reference=0.0f;
-    Pitch_rate_reference=0.0f;
-    phi_pid.reset();
-    theta_pid.reset();
-    phi_pid.set_error(Roll_angle_reference);
-    theta_pid.set_error(Pitch_angle_reference);
-    Flip_flag = 0;
-    Flip_counter = 0;
+    Roll_rate_reference=0.0f;　　　　 // ロール（横方向）の目標角速度を0にリセット
+    Pitch_rate_reference=0.0f;　　　　 // ピッチ（縦方向）の目標角速度を0にリセット
+    phi_pid.reset();　　　　　　　　　 // ロール角速度制御のPID制御器をリセット（誤差の積分や微分などをクリア）
+    theta_pid.reset();　　　　　　　　// ピッチ角速度制御のPID制御器をリセット（誤差の積分や微分などをクリア）
+    phi_pid.set_error(Roll_angle_reference);　　　  // ロール角度の初期設定誤差をPIDに設定（目標と現在の角度との差）
+    theta_pid.set_error(Pitch_angle_reference);　　 // ピッチ角度の初期設定誤差をPIDに設定（目標と現在の角度との差）
+    Flip_flag = 0;　　　　　　　　　　　// フリップ動作が有効かどうかを示すフラグをリセット
+    Flip_counter = 0;　　　　　　　　　 // フリップ動作の進行度カウンタをリセット
     /////////////////////////////////////
     // 以下の処理で、角度制御が有効になった時に
     // 急激な目標値が発生して機体が不安定になるのを防止する
-    Aileron_center  = Roll_angle_command;
-    Elevator_center = Pitch_angle_command;
-    Roll_angle_offset   = 0;
-    Pitch_angle_offset = 0;
+    Aileron_center  = Roll_angle_command;　　　// ロール（横方向）の角度目標値の基準を設定
+    Elevator_center = Pitch_angle_command;　　  // ピッチ（縦方向）の角度目標値の基準を設定
+    Roll_angle_offset   = 0;　　　　　　 // ロール角度のオフセットをリセット（目標角度との差）
+    Pitch_angle_offset = 0;　　　　　　　  // ピッチ角度のオフセットをリセット（目標角度との差）
     /////////////////////////////////////
 }
 
-void angle_control(void)
+void angle_control(void)　　　　　　//ドローンやロボットの角度制御とフリップ動作を管理
 {
   float phi_err, theta_err, alt_err;
   static uint8_t cnt=0;
   static float timeval=0.0f;
-  //flip
+  //flip　　  // フリップ制御のための初期化
   uint16_t flip_delay = 150; 
   uint16_t flip_step;
   float domega;
 
+  // 制御モードがRATECONTROLの場合、角度制御は行わない
   if (Control_mode == RATECONTROL) return;
 
-  //PID Control
+  //PID Control　　 // バッテリ電圧に応じて、モーターの出力がしきい値より小さい場合、角度制御を停止
   if ((Thrust_command/BATTERY_VOLTAGE < Motor_on_duty_threshold))//Angle_control_on_duty_threshold))
   {
-    //Initialize
+    //Initialize　　 // 角度制御の初期化
     reset_angle_control();
   }
   else
   {
-    //Flip
+    //Flip　　　  // フリップ中の処理
     if (Flip_flag == 1)
-    { 
+    { 　　　 // フリップ中はLEDカラーを変更
       Led_color = FLIPCOLOR;
 
-      //PID Reset
+      //PID Reset　　 // PID制御のリセット
       phi_pid.reset();
       theta_pid.reset();
     
-      //Flip
+      //Flip　　   // フリップ時間の設定と変化量計算
       Flip_time = 0.4;
       Pitch_rate_reference= 0.0;
       domega = 0.00225f*8.0*PI/Flip_time/Flip_time;//25->22->23->225
+      // フリップ遅延とステップの設定
       flip_delay = 150;
       flip_step = (uint16_t)(Flip_time/0.0025f);
+       // フリップの各段階の処理
       if (Flip_counter < flip_delay)
       {
         Roll_rate_reference = 0.0f;
@@ -711,6 +724,7 @@ void angle_control(void)
       {
         if(Ahrs_reset_flag == 0) 
         {
+          // AHRS（Attitude and Heading Reference System）のリセット
           Ahrs_reset_flag = 1;
           ahrs_reset();
         }
@@ -718,14 +732,18 @@ void angle_control(void)
         Thrust_command=T_flip*1.4;
       }
       else
-      {
+      {　　　
+          // フリップ終了後のフラグリセット
         Flip_flag = 0;
         Ahrs_reset_flag = 0;
       }
+      // フリップカウンターを進める
       Flip_counter++;
     }
     else
     {
+      // フリップが終了した場合の処理
+      // Flip_flag を 1 にすることでフリップを開始する部分がコメントアウトされている
       //flip reset
       //Flip_flag = 1;
       Roll_rate_reference = 0;
@@ -733,42 +751,49 @@ void angle_control(void)
       Ahrs_reset_flag = 0;
       Flip_counter = 0;
 
-      //Angle Control
+      //Angle Control　　// 角度制御開始
       Led_color = RED;
-      //Get Roll and Pitch angle ref 
+      //Get Roll and Pitch angle ref 　　 // ロール角度とピッチ角度の目標値を取得（基準値を引いて0.5倍）
       Roll_angle_reference  = 0.5f * PI * (Roll_angle_command - Aileron_center);
       Pitch_angle_reference = 0.5f * PI * (Pitch_angle_command - Elevator_center);
+        // 目標角度の範囲を制限（±30度）
       if (Roll_angle_reference > (30.0f*PI/180.0f) ) Roll_angle_reference = 30.0f*PI/180.0f;
       if (Roll_angle_reference <-(30.0f*PI/180.0f) ) Roll_angle_reference =-30.0f*PI/180.0f;
       if (Pitch_angle_reference > (30.0f*PI/180.0f) ) Pitch_angle_reference = 30.0f*PI/180.0f;
       if (Pitch_angle_reference <-(30.0f*PI/180.0f) ) Pitch_angle_reference =-30.0f*PI/180.0f;
 
-      //Error
+      //Error　　  // 現在の角度との誤差を計算
       phi_err   = Roll_angle_reference   - (Roll_angle - Roll_angle_offset );
       theta_err = Pitch_angle_reference - (Pitch_angle - Pitch_angle_offset);
       alt_err = Alt_ref - Altitude2;
 
-      //Altitude COntrol PID
+      //Altitude COntrol PID　　 // ロールとピッチのPID制御
       Roll_rate_reference = phi_pid.update(phi_err, Interval_time);
       Pitch_rate_reference = theta_pid.update(theta_err, Interval_time);
-      if(Alt_flag==1)Z_dot_ref = alt_pid.update(alt_err, Interval_time);
+      if(Alt_flag==1)Z_dot_ref = alt_pid.update(alt_err, Interval_time);　　// 高度PID制御（高度フラグが1の場合）
       
     } 
   }
 }
 
-void set_duty_fr(float duty){ledcWrite(FrontRight_motor, (uint32_t)(255*duty));}
+//各モーターのデューティ比を設定する関数
+void set_duty_fr(float duty){ledcWrite(FrontRight_motor, (uint32_t)(255*duty));}    // dutyは0.0から1.0の範囲で与えられるので、255倍してPWM信号用の範囲（0-255）に変換
 void set_duty_fl(float duty){ledcWrite(FrontLeft_motor, (uint32_t)(255*duty));}
 void set_duty_rr(float duty){ledcWrite(RearRight_motor, (uint32_t)(255*duty));}
 void set_duty_rl(float duty){ledcWrite(RearLeft_motor, (uint32_t)(255*duty));}
 
+// PWMの初期設定を行う関数
 void init_pwm(void)
 {
-  ledcSetup(FrontLeft_motor, freq, resolution);
+  // 各モーターに対してPWM設定を行う
+  // freq: PWM信号の周波数、resolution: PWMの解像度（ビット数）
+  // ledcSetup() 関数で、モーターの制御ピンに対してPWM設定をします。
+  ledcSetup(FrontLeft_motor, freq, resolution);   // FrontLeft モーターのPWM設定
   ledcSetup(FrontRight_motor, freq, resolution);
   ledcSetup(RearLeft_motor, freq, resolution);
   ledcSetup(RearRight_motor, freq, resolution);
-  ledcAttachPin(pwmFrontLeft, FrontLeft_motor);
+  // 各モーターの制御ピンにPWM信号を接続
+  ledcAttachPin(pwmFrontLeft, FrontLeft_motor);  // FrontLeft モーターにPWM信号を接続
   ledcAttachPin(pwmFrontRight, FrontRight_motor);
   ledcAttachPin(pwmRearLeft, RearLeft_motor);
   ledcAttachPin(pwmRearRight, RearRight_motor);
@@ -776,58 +801,66 @@ void init_pwm(void)
 
 uint8_t get_arming_button(void)
 {
-  static int8_t chatta=0;
-  static uint8_t state=0;
+  static int8_t chatta=0;    // 状態の変化をカウントするための変数。状態変化をスムーズに制御。
+  static uint8_t state=0;    // ボタンの状態（0: 非アーム状態, 1: アーム状態）を保持。
+  // アーミングボタンが押されている場合
   if( (int)Stick[BUTTON_ARM] == 1 )
   { 
-    chatta++;
+    chatta++;     // ボタンが押されている状態が続いているのでカウントを増やす。
+  // もしchattaが10を超えたら、アーム状態を「1」（アーム済み）に設定
     if(chatta>10)
     {
-      chatta=10;
-      state=1;
+      chatta=10;   // chattaが10を超えないように制限。
+      state=1;     // アーム状態に設定
     }
   }
-  else
-  {
-    chatta--;
+  else    // アーミングボタンが押されていない場合
+  { 
+    chatta--;        // ボタンが離された状態が続いているのでカウントを減らす。
+    // もしchattaが-10を下回ったら、非アーム状態を「0」（非アーム）に設定
     if(chatta<-10)
     {    
-      chatta=-10;
-      state=0;
+      chatta=-10;   // chattaが-10を下回らないように制限
+      state=0;       // 非アーム状態に設定
     }
   }
-  return state;
+   // ボタンの状態を返す
+  return state;     // stateが0なら非アーム、1ならアーム状態
 }
 
 uint8_t get_flip_button(void)
 {
-  static int8_t chatta=0;
-  static uint8_t state=0;
+  static int8_t chatta=0;            // ボタンの押下状態を安定させるためのカウンタ
+  static uint8_t state=0;            // フリップ状態（0: 非フリップ、1: フリップ開始）
+  // フリップボタンが押された場合
   if( (int)Stick[BUTTON_FLIP] == 1 )
   { 
-    chatta++;
+    chatta++;     // ボタンが押された状態が続いているのでカウントを増加
+     // もしchattaが10を超えたら、フリップ状態を「1」に設定
     if(chatta>10)
     {
-      chatta=10;
-      state=1;
+      chatta=10;  // chattaが10を超えないように制限
+      state=1;     // フリップ開始状態に設定
     }
   }
-  else
+  else    // フリップボタンが離された場合
   {
-    chatta--;
+    chatta--;    // ボタンが離されたのでカウントを減少
+     // もしchattaが-10を下回ったら、非フリップ状態を「0」に設定
     if(chatta<-10)
     {    
-      chatta=-10;
-      state=0;
+      chatta=-10;   // chattaが-10を下回らないように制限
+      state=0;      // 非フリップ状態に設定
     }
   }
-  return state;
+  // フリップ状態を返す
+  return state;   // stateが1ならフリップ開始、0なら非フリップ
 }
 
 void motor_stop(void)
 {
-  set_duty_fr(0.0);
-  set_duty_fl(0.0);
-  set_duty_rr(0.0);
-  set_duty_rl(0.0);
+  set_duty_fr(0.0);    // 右前モーターのデューティサイクルを0に設定
+  set_duty_fl(0.0);     // 左前モーターのデューティサイクルを0に設定
+  set_duty_rr(0.0);   // 右後モーターのデューティサイクルを0に設定
+  set_duty_rl(0.0);   // 左後モーターのデューティサイクルを0に設定
 }
