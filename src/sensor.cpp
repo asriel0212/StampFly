@@ -101,6 +101,7 @@ void sensor_reset_offset(void)
   Offset_counter = 0;
 }
 
+//オフセットの平均の計算
 void sensor_calc_offset_avarage(void)
 {
   Roll_rate_offset = (Offset_counter * Roll_rate_offset + Roll_rate_raw) / (Offset_counter + 1);
@@ -149,13 +150,13 @@ void sensor_init()
   voltage_filter.set_parameter(0.005, 0.0025);
   
   uint16_t cnt=0;
-  while(cnt<3)
+  while(cnt<3)//三回ループ
   {
-    if(ToF_bottom_data_ready_flag)
+    if(ToF_bottom_data_ready_flag)  //もしtof準備フラグが１だったら
     {
       ToF_bottom_data_ready_flag = 0;
       cnt++;
-      USBSerial.printf("%d %d\n\r", cnt, tof_bottom_get_range());
+      USBSerial.printf("%d %d\n\r", cnt, tof_bottom_get_range());//下のtofの距離の取得
     }
   }
   delay(10);
