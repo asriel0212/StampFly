@@ -151,12 +151,17 @@ framework = arduino
 lib_deps =
     fastled/FastLED
     tinyu-zhao/INA3221
-    bblanchon/ArduinoJson@^7.4.1
+    ###変更点
+    
+bblanchon/ArduinoJson@^7.4.1
+    
 その後、以下のコマンドを実行すると、ライブラリが取得されます：
 
 sh
 pio pkg install
-2. ライブラリの手動インストール
+
+
+/*   2. ライブラリの手動インストール
 特定のライブラリを手動でインストールしたい場合は、以下のコマンドを使用できます：
 
 sh
@@ -168,10 +173,10 @@ pio pkg install bblanchon/ArduinoJson@^7.4.1
 
 ini
 lib_extra_dirs = lib
-これにより、lib フォルダ内のライブラリを参照できます。
+これにより、lib フォルダ内のライブラリを参照できます。    */
 
 4. ライブラリの更新
 ライブラリを最新の状態にするには、以下のコマンドを実行してください：
 
-sh
+//sh
 pio pkg update
