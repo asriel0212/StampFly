@@ -137,6 +137,9 @@ Pairing is required when flying for the first time:
 
 
 
+
+
+### 個人的設定
 1. ライブラリのインストール
 PlatformIOでは、lib_deps にライブラリを指定することで、自動的に取得できます。 platformio.ini に以下のように記述してください：
 
