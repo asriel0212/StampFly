@@ -134,3 +134,41 @@ Pairing is required when flying for the first time:
 
 ### Impact Stop Function
 - The motors automatically stop when a significant impact is detected.
+
+
+
+1. ライブラリのインストール
+PlatformIOでは、lib_deps にライブラリを指定することで、自動的に取得できます。 platformio.ini に以下のように記述してください：
+
+ini
+[env:esp32-s3-devkitc-1]
+platform = espressif32
+board = esp32-s3-devkitc-1
+framework = arduino
+lib_deps =
+    fastled/FastLED
+    tinyu-zhao/INA3221
+    bblanchon/ArduinoJson@^7.4.1
+その後、以下のコマンドを実行すると、ライブラリが取得されます：
+
+sh
+pio pkg install
+2. ライブラリの手動インストール
+特定のライブラリを手動でインストールしたい場合は、以下のコマンドを使用できます：
+
+sh
+pio pkg install fastled/FastLED
+pio pkg install tinyu-zhao/INA3221
+pio pkg install bblanchon/ArduinoJson@^7.4.1
+3. ローカルライブラリの利用
+自作ライブラリやローカルにあるライブラリを使用する場合は、lib_extra_dirs を設定します：
+
+ini
+lib_extra_dirs = lib
+これにより、lib フォルダ内のライブラリを参照できます。
+
+4. ライブラリの更新
+ライブラリを最新の状態にするには、以下のコマンドを実行してください：
+
+sh
+pio pkg update
